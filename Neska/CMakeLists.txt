@@ -1,12 +1,22 @@
-﻿# CMakeList.txt : CMake project for Neska, include source and define
-# project specific logic here.
-#
+﻿project(Neska LANGUAGES CXX)
 
-# Add source to this project's executable.
-add_executable (Neska "Neska.cpp" "Neska.h")
+file(GLOB_RECURSE NES_SOURCES
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/*.h"
+)
 
-if (CMAKE_VERSION VERSION_GREATER 3.12)
-  set_property(TARGET Neska PROPERTY CXX_STANDARD 20)
-endif()
+add_executable(Neska
+  ${NES_SOURCES}
+)
 
-# TODO: Add tests and install targets if needed.
+set_property(TARGET Neska PROPERTY VS_DEBUGGER_WORKING_DIRECTORY
+             "${CMAKE_CURRENT_BINARY_DIR}")
+
+target_include_directories(Neska PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/src"
+)
+
+target_link_libraries(Neska PRIVATE
+  SDL3::SDL3
+  imgui::imgui
+)

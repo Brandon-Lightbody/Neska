@@ -71,7 +71,7 @@ PPU::PPU(MirrorMode mode, Logger& logger)
     evaluatedSpriteCount(0), attribShiftLo(0), attribShiftHi(0),
     patternShiftLo(0), patternShiftHi(0), nextTileID(0), nextTileAttr(0),
     nextTileLo(0), nextTileHi(0), scrollX_coarse(0), scrollY_coarse(0),
-    scrollY_fine(0), sprite0HitFlag(false), sprite0HitPossible(false), spriteScanline(0)
+    scrollY_fine(0), sprite0HitFlag(false), sprite0HitPossible(false)
 {
     std::memset(registers, 0, sizeof(registers));
     std::memset(vram, 0, sizeof(vram));

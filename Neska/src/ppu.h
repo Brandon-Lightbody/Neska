@@ -163,7 +163,7 @@ private:
     // *** NEW: Sprite evaluation data ***
     int evaluatedSpriteCount;          // Number of sprites on the current scanline (max 8)
     int evaluatedSpriteIndices[8];     // OAM indices of the evaluated sprites.            // Flag for sprite 0 hit on the current scanline.
-    uint8_t spriteScanline[32];
+    uint8_t spriteScanline[32]{};
     bool sprite0HitFlag;
 
     bool reloadPending;
