@@ -11,7 +11,7 @@
 #include "renderer.h"
 #include "logger.h"
 
-int main(int argc, char** argv) {
+int main() {
     auto logger = std::make_unique<Logger>();
     logger->toggleLogging(true, false);
 
