@@ -134,8 +134,6 @@ void PPU::writeRegister(uint16_t addr, uint8_t val) {
     uint8_t reg = addr & 0x7;
     registers[reg] = val;
 
-    logger->logToConsole((const char*)addr);
-
     switch (reg) {
     case 0: // PPUCTRL ($2000)
         // t: ...00.. ........ = fine X scroll bank (bits 0–1 = name‑table select)

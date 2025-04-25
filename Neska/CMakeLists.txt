@@ -20,3 +20,10 @@ target_link_libraries(Neska PRIVATE
   SDL3::SDL3
   imgui::imgui
 )
+
+add_custom_command(
+    TARGET Neska POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/roms"
+        "$<TARGET_FILE_DIR:Neska>/roms"
+)
