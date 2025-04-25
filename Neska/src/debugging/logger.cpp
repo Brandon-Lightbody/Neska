@@ -15,12 +15,12 @@ void Logger::toggleLogging(bool consoleLogging, bool fileLogging) {
 	fileLoggingEnabled = fileLogging;
 }
 
-void Logger::logToConsole(const char* debugOutput) {
-    logBuffer.push({ std::string(debugOutput) });
+void Logger::logToConsole(std::string debugOutput) {
+    logBuffer.push({ debugOutput });
 }
 
-void Logger::logToFile(const char* debugOutput) {
-    logBuffer.push({ std::string(debugOutput) });
+void Logger::logToFile(std::string debugOutput) {
+    logBuffer.push({ debugOutput });
 }
 
 void Logger::handleLogRequests() {
