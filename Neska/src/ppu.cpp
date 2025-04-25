@@ -4,7 +4,7 @@
 #include <cstring>
 #include <iostream>
 
-#include "logger.h"
+#include "debugging/logger.h"
 
 // ----------------
 // PPUFlags

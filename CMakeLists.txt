@@ -11,3 +11,7 @@ find_package(imgui CONFIG REQUIRED)
 add_subdirectory(Neska)
 
 target_link_libraries(Neska PRIVATE SDL3::SDL3)
+
+target_compile_definitions(Neska PRIVATE
+    ROMS_DIR="$<TARGET_FILE_DIR:Neska>/../../roms"
+)

@@ -8,8 +8,8 @@
 #include "ppu.h"
 #include "cpu.h"
 #include "emulator.h"
-#include "renderer.h"
-#include "logger.h"
+#include "renderer/cpu/cpu_renderer.h"
+#include "debugging/logger.h"
 
 int main() {
     auto logger = std::make_unique<Logger>();

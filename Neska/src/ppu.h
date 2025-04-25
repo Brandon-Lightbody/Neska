@@ -4,7 +4,7 @@
 #include <vector>
 #include <cstring>
 #include <iostream>
-#include "logger.h"
+#include "debugging/logger.h"
 #include "core.h"
 
 struct PPUFlags {
