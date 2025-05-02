@@ -1,25 +1,26 @@
 #include "cpu_renderer.h"
 #include <iostream>
 #include <cassert>
+#include <imgui_impl_sdl3.h>
 
 Renderer::Renderer(int w, int h, const std::string& title)
-    : window(nullptr), sdlRenderer(nullptr), texture(nullptr),
+    : sdlWindow(nullptr), sdlRenderer(nullptr), texture(nullptr),
     width(w), height(h)
 {
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         std::cerr << "SDL init error:" << SDL_GetError() << "\n";
         exit(1);
     }
-    window = SDL_CreateWindow(title.c_str(), width, height, 0);
-    if (!window) {
+    sdlWindow = SDL_CreateWindow(title.c_str(), width, height, 0);
+    if (!sdlWindow) {
         std::cerr << "Window creation error:" << SDL_GetError() << "\n";
         SDL_Quit();
         exit(1);
     }
-    sdlRenderer = SDL_CreateRenderer(window, 0);
+    sdlRenderer = SDL_CreateRenderer(sdlWindow, 0);
     if (!sdlRenderer) {
         std::cerr << "Renderer creation error:" << SDL_GetError() << "\n";
-        SDL_DestroyWindow(window);
+        SDL_DestroyWindow(sdlWindow);
         SDL_Quit();
         exit(1);
     }
@@ -28,7 +29,7 @@ Renderer::Renderer(int w, int h, const std::string& title)
     if (!texture) {
         std::cerr << "Texture creation error:" << SDL_GetError() << "\n";
         SDL_DestroyRenderer(sdlRenderer);
-        SDL_DestroyWindow(window);
+        SDL_DestroyWindow(sdlWindow);
         SDL_Quit();
         exit(1);
     }
@@ -38,7 +39,7 @@ Renderer::~Renderer()
 {
     if (texture)SDL_DestroyTexture(texture);
     if (sdlRenderer)SDL_DestroyRenderer(sdlRenderer);
-    if (window)SDL_DestroyWindow(window);
+    if (sdlWindow)SDL_DestroyWindow(sdlWindow);
     SDL_Quit();
 }
 
@@ -47,6 +48,10 @@ void Renderer::renderFrame(const uint32_t* pixels)
     SDL_UpdateTexture(texture, nullptr, pixels, width * sizeof(uint32_t));
     SDL_RenderClear(sdlRenderer);
     SDL_RenderTexture(sdlRenderer, texture, nullptr, nullptr);
+    
+}
+
+void Renderer::present() {
     SDL_RenderPresent(sdlRenderer);
 }
 
@@ -54,6 +59,7 @@ bool Renderer::pollEvents(Memory& memory)
 {
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
+        ImGui_ImplSDL3_ProcessEvent(&e);
         if (e.type == SDL_EVENT_QUIT) {
             return false;
         }
@@ -109,3 +115,6 @@ std::vector<uint32_t> Renderer::upscaleImage(const uint32_t* source, int sw, int
     
     return out;
 }
+
+SDL_Window* Renderer::getSDLWindow() { return sdlWindow; }
+SDL_Renderer* Renderer::getSDLRenderer() { return sdlRenderer; }
