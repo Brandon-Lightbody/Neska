@@ -13,7 +13,10 @@ public:
     // Must be called repeatedly to run the emulation.
     void step();
 
-    // Did we just finish a frame?  (i.e. PPU wrapped to scanline 0,cyle 0)
+    CPU* getCPU() const;
+    PPU* getPPU() const;
+
+    // Did we just finish a frame?  (i.e. PPU wrapped to scanline 0, cycle 0)
     bool frameComplete() const;
 
     // Clear the “just finished a frame” flag so you can draw again.
@@ -23,7 +26,7 @@ public:
     const uint32_t* getFrameBuffer() const;
 
 private:
-    CPU& cpu_;
-    PPU& ppu_;
-    bool frameDone_;
+    CPU& cpu;
+    PPU& ppu;
+    bool frameDone;
 };
