@@ -4,7 +4,7 @@
 #include <vector>
 #include <cstring>
 #include <iostream>
-#include "debugging/logger.h"
+#include "logger.h"
 #include "core.h"
 
 struct PPUFlags {
@@ -21,7 +21,7 @@ struct PPUFlags {
 };
 
 // Forward declaration of Memory.
-class MemoryBus;
+class Memory;
 
 static const int SCREEN_WIDTH = 256;
 static const int SCREEN_HEIGHT = 240;
@@ -34,16 +34,16 @@ public:
     void reset();
 
     // Set pointer to the shared Memory.
-    void setMemory(MemoryBus* mem);
+    void setMemory(Memory* mem);
 
     // Update mirror mode.
     void setMirrorMode(MirrorMode mode);
 
+    void setCHR(uint8_t* chrData, size_t size);
+
     // CPU register read/write (0x2000-0x2007).
     uint8_t readRegister(uint16_t addr);
     void writeRegister(uint16_t addr, uint8_t value);
-
-    uint8_t peekRegister(uint16_t addr) const;
 
     void stepDot(); // single PPU clock (dot) step
 
@@ -57,13 +57,15 @@ public:
     int getScanline() const { return scanline; }
     int getCycle()    const { return cycle; }
 
+    // For debugging: get raw VRAM.
+    const uint8_t* getVRAM() const;
+
     // NMI: triggered when entering VBlank.
     bool isNmiTriggered() const;
     void clearNmiFlag();
 
     // CPU OAM DMA writes.
     void writeOAM(uint8_t data);
-    uint8_t* rawOAM();
 
     // For the NES palette.
     static const uint32_t nesPalette[64];
@@ -73,6 +75,10 @@ public:
     bool renderingEnabled() const;
 
     // Helpers.
+    uint16_t mirrorAddress(uint16_t addr) const;
+    uint8_t vramRead(uint16_t addr) const;
+    void vramWrite(uint16_t addr, uint8_t data);
+
     bool isVBlank() const;
     bool nmiOutputEnabled() const;
     void clearVBlank();
@@ -97,6 +103,9 @@ private:
     // PPU registers (0-7, mirrored).
     uint8_t registers[8];
 
+    // VRAM (pattern tables, name tables, palette).
+    uint8_t vram[0x4000];
+
     // OAM memory (sprite RAM), 256 bytes.
     uint8_t oam[256];
 
@@ -119,9 +128,6 @@ private:
     // VBlank flag and NMI trigger.
     bool nmiTriggered;
 
-    bool nmiOutput;
-    bool nmiPending;
-
     // Odd-frame flag (for even/odd frame timing).
     bool oddFrame;
 
@@ -131,7 +137,7 @@ private:
     PPUFlags flags;
 
     // Pointer to Memory (for mapper and CHR data).
-    MemoryBus* memory;
+    Memory* memory;
 
     // Background shift registers and latches.
     uint16_t patternShiftLo;
@@ -159,4 +165,6 @@ private:
     int evaluatedSpriteIndices[8];     // OAM indices of the evaluated sprites.            // Flag for sprite 0 hit on the current scanline.
     uint8_t spriteScanline[32]{};
     bool sprite0HitFlag;
+
+    bool reloadPending;
 };

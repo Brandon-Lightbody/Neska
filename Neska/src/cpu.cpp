@@ -1,4 +1,5 @@
-﻿#include "cpu.h"
+﻿// cpu.cpp 
+#include "cpu.h"
 
 // 256-entry instruction table
 Instruction instructionTable[256];
@@ -11,10 +12,10 @@ Instruction instructionTable[256];
 struct TableInitializer { TableInitializer() { CPU::initInstructionTable(); } } tableInitializer;
 
 // Constructor
-CPU::CPU(MemoryBus& mem, PPU& ppu)
+CPU::CPU(Memory& mem, PPU& ppu)
     : memory(&mem), ppu(&ppu), PC(0), A(0), X(0), Y(0), SP(0xFD),
     status(FLAG_UNUSED), cyclesRemaining(0), opcode(0), addr(0), fetched(0),
-    stallCycles(0), nmiRequested(false), totalCycles(0)
+    stallCycles(0), nmiRequested(false)
 {
 }
 
@@ -46,8 +47,6 @@ void CPU::nmi() {
 
     // NMIs cost 7 cycles total
     cyclesRemaining += 7;
-
-    setFlag(FLAG_INTERRUPT, true);
 }
 
 void CPU::irq() {
@@ -62,8 +61,6 @@ void CPU::irq() {
 
     // IRQ also costs 7 cycles
     cyclesRemaining += 7;
-
-    setFlag(FLAG_INTERRUPT, true);
 }
 
 int CPU::tickCycle() {
@@ -77,11 +74,6 @@ int CPU::tickCycle() {
 
     // 2) If we just finished the previous instruction, start a new one
     if (cyclesRemaining == 0) {
-        if (nmiRequested) {
-            nmiRequested = false;
-            nmi();
-        }
-
         // a) Handle any pending NMI (highest priority), then IRQ
         if (nmiRequested) {
             nmiRequested = false;
@@ -95,7 +87,8 @@ int CPU::tickCycle() {
         opcode = readByte(PC++);
         const Instruction& ins = instructionTable[opcode];
 
-        cyclesRemaining += ins.cycles;
+        // c) Base cycles from the table
+        cyclesRemaining = ins.cycles;
 
         // d) Addressing‑mode fetch (may return an extra “page‑cross” cycle)
         bool pageCross = (this->*ins.addrmode)();
@@ -116,13 +109,7 @@ int CPU::tickCycle() {
     cyclesRemaining--;
     cyclesConsumed++;
 
-    totalCycles++;
-
     return cyclesConsumed;
-}
-
-int CPU::getTotalCycles() const {
-    return totalCycles;
 }
 
 // Initialize table with defaults and specific entries
@@ -310,11 +297,11 @@ void CPU::initInstructionTable() {
     SET_INS(0xFC, TOP, ABX, 4);
 
     // —— XAA / ANE family
-    SET_INS(0x8B, XAA, IMM, 2); 
+    SET_INS(0x8B, XAA, IMM, 2);
     SET_INS(0x9B, XAS, ABY, 5);
 
     SET_INS(0xFA, SKB, ABY, 4);
-     
+
     // —— ANC (ALR) “AND then set carry from bit 7”
     SET_INS(0x0B, ANC, IMM, 2);
     SET_INS(0x2B, ANC, IMM, 2);
@@ -324,6 +311,7 @@ void CPU::initInstructionTable() {
     SET_INS(0x97, SAX, ZPY, 4);
     SET_INS(0x8F, SAX, ABS, 4);
     SET_INS(0x83, SAX, IZX, 6);
+    SET_INS(0x93, SAX, IZY, 6);
 
     // —— single‐byte NOPs
     SET_INS(0x1A, NOP, IMP, 2);
@@ -334,177 +322,28 @@ void CPU::initInstructionTable() {
 }
 
 // Addressing modes (return true if page crossed for ABX/ABY)
-uint16_t CPU::addr_IMP() { 
-    fetched = A;
-    return 0;
-}
-
-uint16_t CPU::addr_ACC() {
-    fetched = A;
-    return 0;
-}
-
-uint16_t CPU::addr_IMM() {
-    addr = PC++;
-    fetched = readByte(addr);
-    return 0;
-}
-
-
-uint16_t CPU::addr_ZP() {
-    addr = readByte(PC++) & 0xFF;
-    auto op = instructionTable[opcode].operate;
-    if (op == &CPU::STA || op == &CPU::STX || op == &CPU::STY ||
-        op == &CPU::SAX || op == &CPU::XAS) {
-        fetched = peekByte(addr);
-    }
-    else {
-        fetched = readByte(addr);
-    }
-    return 0;
-}
-
-uint16_t CPU::addr_ZPX() {
-    addr = (readByte(PC++) + X) & 0xFF;
-    auto op = instructionTable[opcode].operate;
-    if (op == &CPU::STA || op == &CPU::STX || op == &CPU::STY ||
-        op == &CPU::SAX || op == &CPU::XAS) {
-        fetched = peekByte(addr);
-    }
-    else {
-        fetched = readByte(addr);
-    }
-    return 0;
-}
-
-uint16_t CPU::addr_ZPY() {
-    addr = (readByte(PC++) + Y) & 0xFF;
-    auto op = instructionTable[opcode].operate;
-    if (op == &CPU::STA || op == &CPU::STX || op == &CPU::STY ||
-        op == &CPU::SAX || op == &CPU::XAS) {
-        fetched = peekByte(addr);
-    }
-    else {
-        fetched = readByte(addr);
-    }
-    return 0;
-}
-
-uint16_t CPU::addr_REL() {
-    int8_t o = (int8_t)readByte(PC++);
-    uint16_t prev = PC; addr = PC + o;
-    fetched = 0;
-    return ((prev & 0xFF00) != (addr & 0xFF00));
-}
-
-uint16_t CPU::addr_ABS() {
-    uint16_t lo = readByte(PC++);
-    uint16_t hi = readByte(PC++);
-    addr = (hi << 8) | lo;
-    auto op = instructionTable[opcode].operate;
-    if (op == &CPU::STA || op == &CPU::STX || op == &CPU::STY ||
-        op == &CPU::SAX || op == &CPU::XAS) {
-        fetched = peekByte(addr);
-    }
-    else {
-        fetched = readByte(addr);
-    }
-    return 0;
-}
-
-uint16_t CPU::addr_ABX() {
-    uint16_t lo = readByte(PC++);
-    uint16_t hi = readByte(PC++);
-    uint16_t base = (hi << 8) | lo;
-    addr = base + X;
-    bool pageCross = ((base & 0xFF00) != (addr & 0xFF00));
-    auto op = instructionTable[opcode].operate;
-    if (op == &CPU::STA || op == &CPU::STX || op == &CPU::STY ||
-        op == &CPU::SAX || op == &CPU::XAS) {
-        fetched = peekByte(addr);
-    }
-    else {
-        fetched = readByte(addr);
-    }
-    return pageCross;
-}
-
-uint16_t CPU::addr_ABY() {
-    uint16_t lo = readByte(PC++);
-    uint16_t hi = readByte(PC++);
-    uint16_t base = (hi << 8) | lo;
-    addr = base + Y;
-    bool pageCross = ((base & 0xFF00) != (addr & 0xFF00));
-    auto op = instructionTable[opcode].operate;
-    if (op == &CPU::STA || op == &CPU::STX || op == &CPU::STY ||
-        op == &CPU::SAX || op == &CPU::XAS) {
-        fetched = peekByte(addr);
-    }
-    else {
-        fetched = readByte(addr);
-    }
-    return pageCross;
-}
-
-
-uint16_t CPU::addr_IND() {
-    uint16_t ptrLo = readByte(PC++);
-    uint16_t ptrHi = readByte(PC++);
-    uint16_t ptr = (ptrHi << 8) | ptrLo;
-    uint16_t lo = readByte(ptr);
-    uint16_t hi = readByte((ptr & 0xFF00) | ((ptr + 1) & 0x00FF));
-    addr = (hi << 8) | lo;
-    // JMP uses indirect and never writes; always a safe read
-    fetched = readByte(addr);
-    return 0;
-}
-
-uint16_t CPU::addr_IZX() {
-    uint16_t zp = (readByte(PC++) + X) & 0xFF;
-    uint16_t lo = readByte(zp);
-    uint16_t hi = readByte((zp + 1) & 0xFF);
-    addr = (hi << 8) | lo;
-    auto op = instructionTable[opcode].operate;
-    if (op == &CPU::STA || op == &CPU::STX || op == &CPU::STY ||
-        op == &CPU::SAX || op == &CPU::XAS) {
-        fetched = peekByte(addr);
-    }
-    else {
-        fetched = readByte(addr);
-    }
-    return 0;
-}
-
-uint16_t CPU::addr_IZY() {
-    uint16_t zp = readByte(PC++) & 0xFF;
-    uint16_t lo = readByte(zp);
-    uint16_t hi = readByte((zp + 1) & 0xFF);
-    uint16_t base = (hi << 8) | lo;
-    addr = base + Y;
-    bool pageCross = ((base & 0xFF00) != (addr & 0xFF00));
-    auto op = instructionTable[opcode].operate;
-    if (op == &CPU::STA || op == &CPU::STX || op == &CPU::STY ||
-        op == &CPU::SAX || op == &CPU::XAS) {
-        fetched = peekByte(addr);
-    }
-    else {
-        fetched = readByte(addr);
-    }
-    return pageCross;
-}
+uint16_t CPU::addr_IMP() { fetched = A; return 0; }
+uint16_t CPU::addr_ACC() { fetched = A; return 0; }
+uint16_t CPU::addr_IMM() { addr = PC++; fetched = readByte(addr); return 0; }
+uint16_t CPU::addr_ZP() { addr = readByte(PC++) & 0xFF; fetched = readByte(addr); return 0; }
+uint16_t CPU::addr_ZPX() { addr = (readByte(PC++) + X) & 0xFF; fetched = readByte(addr); return 0; }
+uint16_t CPU::addr_ZPY() { addr = (readByte(PC++) + Y) & 0xFF; fetched = readByte(addr); return 0; }
+uint16_t CPU::addr_REL() { int8_t o = (int8_t)readByte(PC++); uint16_t prev = PC; addr = PC + o; fetched = 0; return ((prev & 0xFF00) != (addr & 0xFF00)); }
+uint16_t CPU::addr_ABS() { uint16_t lo = readByte(PC++), hi = readByte(PC++); addr = (hi << 8) | lo; fetched = readByte(addr); return 0; }
+uint16_t CPU::addr_ABX() { uint16_t lo = readByte(PC++), hi = readByte(PC++), base = (hi << 8) | lo; addr = base + X; fetched = readByte(addr); return ((base & 0xFF00) != (addr & 0xFF00)); }
+uint16_t CPU::addr_ABY() { uint16_t lo = readByte(PC++), hi = readByte(PC++), base = (hi << 8) | lo; addr = base + Y; fetched = readByte(addr); return ((base & 0xFF00) != (addr & 0xFF00)); }
+uint16_t CPU::addr_IND() { uint16_t ptr = readByte(PC++) | (readByte(PC++) << 8); uint16_t lo = readByte(ptr), hi = readByte((ptr & 0xFF00) | ((ptr + 1) & 0xFF)); addr = (hi << 8) | lo; fetched = readByte(addr); return 0; }
+uint16_t CPU::addr_IZX() { uint16_t zp = (readByte(PC++) + X) & 0xFF; uint16_t lo = readByte(zp), hi = readByte((zp + 1) & 0xFF); addr = (hi << 8) | lo; fetched = readByte(addr); return 0; }
+uint16_t CPU::addr_IZY() { uint16_t zp = readByte(PC++) & 0xFF; uint16_t lo = readByte(zp), hi = readByte((zp + 1) & 0xFF), base = (hi << 8) | lo; addr = base + Y; fetched = readByte(addr); return ((base & 0xFF00) != (addr & 0xFF00)); }
 
 // Bus operations with PPU mapping
 uint8_t CPU::readByte(uint16_t a) {
     // ALL addresses—including $2000–$3FFF—go through Memory.
-    return memory->cpuRead(a);
-}
-
-uint8_t CPU::peekByte(uint16_t a) const {
-    return memory->cpuPeek(a);
+    return memory->read(a);
 }
 
 void CPU::writeByte(uint16_t a, uint8_t d) {
-    memory->cpuWrite(a, d);
+    memory->write(a, d);
 }
 
 void CPU::setFlag(uint8_t mask, bool v) { if (v) status |= mask; else status &= ~mask; }

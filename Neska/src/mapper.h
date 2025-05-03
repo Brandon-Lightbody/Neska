@@ -4,103 +4,132 @@
 #include <vector>
 #include <memory>
 
+// Base class for all mappers: handles PRG & CHR banking
 class Mapper {
 public:
     virtual ~Mapper() = default;
 
-    virtual void init(uint8_t prgBanks, uint8_t chrBanks,
+    // Initialize with PRG-ROM banks, CHR-ROM/RAM banks, and their data
+    virtual void initMapper(uint8_t prgBanks,
+        uint8_t chrBanks,
         const std::vector<uint8_t>& prgData,
-        const std::vector<uint8_t>& chrData);
+        const std::vector<uint8_t>& chrData) = 0;
 
-    virtual uint8_t cpuRead(uint16_t addr);
-    virtual void cpuWrite(uint16_t addr, uint8_t value);
+    // CPU-side access for addresses $6000–$FFFF
+    virtual uint8_t cpuRead(uint16_t addr) = 0;
+    virtual void    cpuWrite(uint16_t addr, uint8_t data) = 0;
 
-    virtual uint8_t ppuRead(uint16_t addr);
-    virtual void ppuWrite(uint16_t addr, uint8_t value);
+    // PPU-side access for CHR $0000–$1FFF
+    virtual uint8_t ppuRead(uint16_t addr) = 0;
+    virtual void    ppuWrite(uint16_t addr, uint8_t data) = 0;
 };
 
+// Factory to create the appropriate mapper by ID
 std::unique_ptr<Mapper> createMapper(uint8_t mapperID);
 
-class NROM : public Mapper {
+// ===========================
+// Mapper0: NROM (no bank switching)
+// ===========================
+class Mapper0 : public Mapper {
 public:
-    void init(uint8_t prgBanks, uint8_t chrBanks,
+    void initMapper(uint8_t prgBanks,
+        uint8_t chrBanks,
         const std::vector<uint8_t>& prgData,
         const std::vector<uint8_t>& chrData) override;
-
     uint8_t cpuRead(uint16_t addr) override;
-    void cpuWrite(uint16_t addr, uint8_t value) override;
-
+    void    cpuWrite(uint16_t addr, uint8_t data) override;
     uint8_t ppuRead(uint16_t addr) override;
-    void ppuWrite(uint16_t addr, uint8_t value) override;
+    void    ppuWrite(uint16_t addr, uint8_t data) override;
+
+private:
+    std::vector<uint8_t> prgROM;
+    std::vector<uint8_t> prgRAM;   // 8 KB PRG-RAM at $6000–$7FFF
+    std::vector<uint8_t> chrROM;
+    uint8_t prgBanksCount = 0;
+    uint8_t chrBanksCount = 0;
+    bool    hasChrRam = false;
+};
+
+// ===========================
+// Mapper1: MMC1
+// ===========================
+class Mapper1 : public Mapper {
+public:
+    void initMapper(uint8_t prgBanks,
+        uint8_t chrBanks,
+        const std::vector<uint8_t>& prgData,
+        const std::vector<uint8_t>& chrData) override;
+    uint8_t cpuRead(uint16_t addr) override;
+    void    cpuWrite(uint16_t addr, uint8_t data) override;
+    uint8_t ppuRead(uint16_t addr) override;
+    void    ppuWrite(uint16_t addr, uint8_t data) override;
+
 private:
     std::vector<uint8_t> prgROM;
     std::vector<uint8_t> prgRAM;
-    std::vector<uint8_t> chrRom;
-    std::vector<uint8_t> chrRam;
-    bool hasChrRam = false;
+    std::vector<uint8_t> chrROM;
     uint8_t prgBanksCount = 0;
     uint8_t chrBanksCount = 0;
-};
-
-class MMC1 : public Mapper {
-public:
-    void init(uint8_t prgBanks, uint8_t chrBanks,
-        const std::vector<uint8_t>& prgData,
-        const std::vector<uint8_t>& chrData) override;
-
-    uint8_t cpuRead(uint16_t addr) override;
-    void    cpuWrite(uint16_t addr, uint8_t value) override;
-
-    uint8_t ppuRead(uint16_t addr) override;
-    void    ppuWrite(uint16_t addr, uint8_t value) override;
-
-private:
-    // cart data
-    std::vector<uint8_t> prgROM, chrROM, chrRAM;
-    bool hasChrRAM = false;
-    uint8_t prgBanks = 0, chrBanks = 0;
+    bool    hasChrRam = false;
 
     // MMC1 registers
-    uint8_t shiftReg = 0x10;   // 5‑bit register (bit‑4 always 1 => “empty”)
-    uint8_t control = 0x0C;   // startup: PRG 16 KB switching, vertical mir.
+    uint8_t shiftReg = 0;
+    int     shiftCount = 0;
+    uint8_t control = 0x0C;
     uint8_t chrBank0 = 0;
     uint8_t chrBank1 = 0;
     uint8_t prgBank = 0;
+    bool    prgMode = false;
+    bool    chrMode = false;
 
-    // helpers
-    void commitRegister(uint16_t addr);
+    uint32_t getPRGAddress(uint16_t addr) const;
+    uint32_t getCHRAddress(uint16_t addr) const;
 };
 
-class UNROM : public Mapper {
+// ===========================
+// Mapper2: UxROM
+// ===========================
+class Mapper2 : public Mapper {
 public:
-    void init(uint8_t prgBanks, uint8_t chrBanks,
+    void initMapper(uint8_t prgBanks,
+        uint8_t chrBanks,
         const std::vector<uint8_t>& prgData,
         const std::vector<uint8_t>& chrData) override;
-
     uint8_t cpuRead(uint16_t addr) override;
-    void    cpuWrite(uint16_t addr, uint8_t value) override;
-
+    void    cpuWrite(uint16_t addr, uint8_t data) override;
     uint8_t ppuRead(uint16_t addr) override;
-    void    ppuWrite(uint16_t addr, uint8_t value) override;
+    void    ppuWrite(uint16_t addr, uint8_t data) override;
 
 private:
-    std::vector<uint8_t> prgROM, chrRAM;
-    uint8_t prgBanks = 0, bankSelect = 0;
+    std::vector<uint8_t> prgROM;
+    std::vector<uint8_t> prgRAM;
+    std::vector<uint8_t> chrROM;
+    uint8_t prgBanksCount = 0;
+    uint8_t chrBanksCount = 0;
+    bool    hasChrRam = false;
+    uint8_t bankSelect = 0;  // 16KB PRG bank at $8000
 };
 
-class CNROM : public Mapper {
+// ===========================
+// Mapper3: CNROM
+// ===========================
+class Mapper3 : public Mapper {
 public:
-    void init(uint8_t prgBanks, uint8_t chrBanks,
+    void initMapper(uint8_t prgBanks,
+        uint8_t chrBanks,
         const std::vector<uint8_t>& prgData,
         const std::vector<uint8_t>& chrData) override;
-
     uint8_t cpuRead(uint16_t addr) override;
-    void    cpuWrite(uint16_t addr, uint8_t value) override;
-
+    void    cpuWrite(uint16_t addr, uint8_t data) override;
     uint8_t ppuRead(uint16_t addr) override;
-    void    ppuWrite(uint16_t addr, uint8_t value) override;
+    void    ppuWrite(uint16_t addr, uint8_t data) override;
 
 private:
-    std::vector<uint8_t> prgROM, chrROM;
-    uint8_t prgBanks = 0, chrBanks = 0, chrBankSelect = 0;
+    std::vector<uint8_t> prgROM;
+    std::vector<uint8_t> prgRAM;
+    std::vector<uint8_t> chrROM;
+    uint8_t prgBanksCount = 0;
+    uint8_t chrBanksCount = 0;
+    bool    hasChrRam = false;
+    uint8_t chrBankSelect = 0;  // 8KB CHR bank
 };

@@ -1,8 +1,9 @@
-﻿#pragma once
+﻿// cpu.h
+#pragma once
 
 #include <cstdint>
 #include <iostream>
-#include "memory_bus.h"
+#include "memory.h"
 #include "ppu.h"
 
 // 6502 status flags
@@ -38,7 +39,7 @@ extern Instruction instructionTable[256];
 
 class CPU {
 public:
-    CPU(MemoryBus& mem, PPU& ppu);
+    CPU(Memory& mem, PPU& ppu);
 
     static void initInstructionTable();
 
@@ -50,8 +51,6 @@ public:
 
     // Execute one instruction
     int tickCycle();
-
-    int getTotalCycles() const;
 
     // Registers
     uint16_t PC;
@@ -65,14 +64,11 @@ public:
 
     bool nmiRequested = false;
 private:
-    int totalCycles;
-
-    MemoryBus* memory;
+    Memory* memory;
     PPU* ppu;
 
     // Bus read/write (hook these up to memory/map)
     uint8_t readByte(uint16_t addr);
-    uint8_t peekByte(uint16_t a) const;
     void    writeByte(uint16_t addr, uint8_t data);
 
     // Addressing-mode helpers
