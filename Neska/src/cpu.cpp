@@ -1,5 +1,4 @@
-﻿// cpu.cpp 
-#include "cpu.h"
+﻿#include "cpu.h"
 
 // 256-entry instruction table
 Instruction instructionTable[256];
@@ -12,7 +11,7 @@ Instruction instructionTable[256];
 struct TableInitializer { TableInitializer() { CPU::initInstructionTable(); } } tableInitializer;
 
 // Constructor
-CPU::CPU(Memory& mem, PPU& ppu)
+CPU::CPU(MemoryBus& mem, PPU& ppu)
     : memory(&mem), ppu(&ppu), PC(0), A(0), X(0), Y(0), SP(0xFD),
     status(FLAG_UNUSED), cyclesRemaining(0), opcode(0), addr(0), fetched(0),
     stallCycles(0), nmiRequested(false), totalCycles(0)
@@ -497,15 +496,15 @@ uint16_t CPU::addr_IZY() {
 // Bus operations with PPU mapping
 uint8_t CPU::readByte(uint16_t a) {
     // ALL addresses—including $2000–$3FFF—go through Memory.
-    return memory->read(a);
+    return memory->cpuRead(a);
 }
 
 uint8_t CPU::peekByte(uint16_t a) const {
-    return memory->peek(a);
+    return memory->cpuPeek(a);
 }
 
 void CPU::writeByte(uint16_t a, uint8_t d) {
-    memory->write(a, d);
+    memory->cpuWrite(a, d);
 }
 
 void CPU::setFlag(uint8_t mask, bool v) { if (v) status |= mask; else status &= ~mask; }

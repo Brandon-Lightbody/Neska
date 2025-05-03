@@ -21,7 +21,7 @@ struct PPUFlags {
 };
 
 // Forward declaration of Memory.
-class Memory;
+class MemoryBus;
 
 static const int SCREEN_WIDTH = 256;
 static const int SCREEN_HEIGHT = 240;
@@ -34,7 +34,7 @@ public:
     void reset();
 
     // Set pointer to the shared Memory.
-    void setMemory(Memory* mem);
+    void setMemory(MemoryBus* mem);
 
     // Update mirror mode.
     void setMirrorMode(MirrorMode mode);
@@ -57,15 +57,13 @@ public:
     int getScanline() const { return scanline; }
     int getCycle()    const { return cycle; }
 
-    const uint8_t* getNameTables() const;
-    const uint8_t* getPaletteTable() const;
-
     // NMI: triggered when entering VBlank.
     bool isNmiTriggered() const;
     void clearNmiFlag();
 
     // CPU OAM DMA writes.
     void writeOAM(uint8_t data);
+    uint8_t* rawOAM();
 
     // For the NES palette.
     static const uint32_t nesPalette[64];
@@ -74,13 +72,7 @@ public:
     void reloadBackgroundShifters();
     bool renderingEnabled() const;
 
-    uint8_t busRead(uint16_t addr);
-    uint8_t busPeek(uint16_t addr) const;
-    void busWrite(uint16_t addr, uint8_t val);
-
     // Helpers.
-    uint16_t mirrorAddress(uint16_t addr) const;
-
     bool isVBlank() const;
     bool nmiOutputEnabled() const;
     void clearVBlank();
@@ -104,9 +96,6 @@ private:
 
     // PPU registers (0-7, mirrored).
     uint8_t registers[8];
-
-    uint8_t nameTables[0x1000];    // 4 × 1 KB name-tables (0x2000–0x2FFF)
-    uint8_t paletteTable[0x20];    // 32 bytes palette RAM (0x3F00–0x3F1F)
 
     // OAM memory (sprite RAM), 256 bytes.
     uint8_t oam[256];
@@ -142,7 +131,7 @@ private:
     PPUFlags flags;
 
     // Pointer to Memory (for mapper and CHR data).
-    Memory* memory;
+    MemoryBus* memory;
 
     // Background shift registers and latches.
     uint16_t patternShiftLo;

@@ -1,7 +1,7 @@
 #include "debugger.h"
 #include "debug_gui.h"
 
-Debugger::Debugger(Emulator& emu, Memory& mem)
+Debugger::Debugger(Emulator& emu, MemoryBus& mem)
     : emu(emu), mem(mem), cpu(*emu.getCPU()),
     ppu(*emu.getPPU()), paused(false), stepRequested(false)
 {
@@ -73,16 +73,16 @@ PPUState Debugger::getPPUState() const {
     return { ppu.getScanline(), ppu.getCycle() };
 }
 
-std::vector<uint8_t> Debugger::readMemory(uint16_t addr, size_t len) const {
+std::vector<uint8_t> Debugger::peekMemory(uint16_t addr, size_t len) const {
     std::vector<uint8_t> out;
     out.reserve(len);
-    for (size_t i = 0; i < len; ++i) out.push_back(mem.peek(addr + i));
+    for (size_t i = 0; i < len; ++i) out.push_back(mem.cpuPeek(addr + i));
     return out;
 }
 
-std::vector<uint8_t> Debugger::readPPUMemory(uint16_t addr, size_t len) const {
+std::vector<uint8_t> Debugger::peekPPUMemory(uint16_t addr, size_t len) const {
     std::vector<uint8_t> out;
     out.reserve(len);
-    for (size_t i = 0; i < len; ++i) out.push_back(mem.ppuBusRead(addr + i));
+    for (size_t i = 0; i < len; ++i) out.push_back(mem.ppuPeek(addr + i));
     return out;
 }

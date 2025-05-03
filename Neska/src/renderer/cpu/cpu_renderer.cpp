@@ -48,14 +48,13 @@ void Renderer::renderFrame(const uint32_t* pixels)
     SDL_UpdateTexture(texture, nullptr, pixels, width * sizeof(uint32_t));
     SDL_RenderClear(sdlRenderer);
     SDL_RenderTexture(sdlRenderer, texture, nullptr, nullptr);
-    
 }
 
 void Renderer::present() {
     SDL_RenderPresent(sdlRenderer);
 }
 
-bool Renderer::pollEvents(Memory& memory)
+bool Renderer::pollEvents(MemoryBus& memory)
 {
     SDL_Event e;
     while (SDL_PollEvent(&e)) {

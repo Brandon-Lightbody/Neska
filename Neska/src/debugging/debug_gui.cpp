@@ -6,7 +6,8 @@
 
 DebugGUI::DebugGUI(Debugger& dbg)
     : dbg(dbg), memViewAddr(0x0000),
-    sdlWindow(nullptr), sdlRenderer(nullptr)
+    sdlWindow(nullptr), sdlRenderer(nullptr),
+    guiWasStopped(false)
 {
 }
 
@@ -65,7 +66,7 @@ void DebugGUI::draw() {
     ImGui::Begin("Memory");
     ImGui::InputScalar("Addr", ImGuiDataType_U16,
         &memViewAddr, nullptr, nullptr, "%04X");
-    auto block = dbg.readMemory(memViewAddr, 256);
+    auto block = dbg.peekMemory(memViewAddr, 256);
     for (int i = 0; i < 16; ++i) {
         for (int j = 0; j < 16; ++j) {
             ImGui::Text("%02X ", block[i * 16 + j]);
@@ -89,7 +90,10 @@ void DebugGUI::render() {
 }
 
 void DebugGUI::shutdown() {
-    ImGui_ImplSDLRenderer3_Shutdown();
-    ImGui_ImplSDL3_Shutdown();
-    ImGui::DestroyContext();
+    if (!guiWasStopped) {
+        ImGui_ImplSDLRenderer3_Shutdown();
+        ImGui_ImplSDL3_Shutdown();
+        ImGui::DestroyContext();
+        guiWasStopped = true;
+    }
 }

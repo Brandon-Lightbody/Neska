@@ -7,7 +7,7 @@
 
 #include <SDL3/SDL.h>
 #include "emulator.h"
-#include "memory.h"
+#include "memory_bus.h"
 
 struct CPUState {
     uint16_t PC;
@@ -29,7 +29,7 @@ class DebugGUI;  // forward
 
 class Debugger {
 public:
-    Debugger(Emulator& emu, Memory& mem);
+    Debugger(Emulator& emu, MemoryBus& mem);
     ~Debugger();
 
     // ImGui lifecycle (all inside DebugGUI)
@@ -58,12 +58,12 @@ public:
     // State accessors for GUI
     CPUState getCPUState() const;
     PPUState getPPUState() const;
-    std::vector<uint8_t> readMemory(uint16_t addr, size_t len) const;
-    std::vector<uint8_t> readPPUMemory(uint16_t addr, size_t len) const;
+    std::vector<uint8_t> peekMemory(uint16_t addr, size_t len) const;
+    std::vector<uint8_t> peekPPUMemory(uint16_t addr, size_t len) const;
 
 private:
     Emulator& emu;
-    Memory& mem;
+    MemoryBus& mem;
     CPU& cpu;
     PPU& ppu;
 

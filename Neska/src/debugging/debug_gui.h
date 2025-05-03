@@ -19,6 +19,8 @@ public:
     void shutdown();
 
 private:
+    bool guiWasStopped;
+
     Debugger& dbg;
     uint16_t memViewAddr;
     SDL_Window* sdlWindow;

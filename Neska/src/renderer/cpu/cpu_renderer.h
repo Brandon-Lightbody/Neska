@@ -3,7 +3,7 @@
 #include <SDL3/SDL.h>
 #include <vector>
 #include <string>
-#include "memory.h"
+#include "memory_bus.h"
 
 class Renderer {
 public:
@@ -12,7 +12,7 @@ public:
 
     void renderFrame(const uint32_t* pixels);
     void present();
-    bool pollEvents(Memory& memory);
+    bool pollEvents(MemoryBus& memory);
 
     std::vector<uint32_t> upscaleImage(const uint32_t* source, int sw, int sh, int scale);
 

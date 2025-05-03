@@ -7,7 +7,7 @@ file(GLOB_RECURSE NES_SOURCES
 
 add_executable(Neska
   ${NES_SOURCES}
-)
+ "src/main.cpp")
 
 set_property(TARGET Neska PROPERTY VS_DEBUGGER_WORKING_DIRECTORY
              "${CMAKE_CURRENT_BINARY_DIR}")

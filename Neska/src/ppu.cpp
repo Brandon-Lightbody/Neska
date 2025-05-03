@@ -1,5 +1,5 @@
 ﻿#include "ppu.h"
-#include "memory.h"
+#include "memory_bus.h"
 #include <cstring>
 #include <iostream>
 #include <iomanip>
@@ -74,11 +74,9 @@ PPU::PPU(MirrorMode mode, Logger& logger)
     patternShiftLo(0), patternShiftHi(0), nextTileID(0), nextTileAttr(0),
     nextTileLo(0), nextTileHi(0), scrollX_coarse(0), scrollY_coarse(0),
     scrollY_fine(0), sprite0HitFlag(false), sprite0HitPossible(false),
-    vblankLatched(true), vblankFlag(false) 
+    vblankLatched(true), vblankFlag(false), nmiPending(false), nmiOutput(false)
 {
     std::memset(registers, 0, sizeof(registers));
-    std::memset(nameTables, 0, sizeof(nameTables));
-    std::memset(paletteTable, 0, sizeof(paletteTable));
     std::memset(oam, 0, sizeof(oam));
     std::fill(std::begin(frameBuffer), std::end(frameBuffer), 0xFF000000);
     flags.clear();
@@ -111,7 +109,7 @@ void PPU::reset() {
 // Setup
 // ----------------
 
-void PPU::setMemory(Memory* mem) {
+void PPU::setMemory(MemoryBus* mem) {
     memory = mem;
 }
 
@@ -181,7 +179,7 @@ void PPU::writeRegister(uint16_t addr, uint8_t val) {
         registers[7] = val;
         uint16_t vaddr = v & 0x3FFF;
         int inc = (registers[0] & 0x04) ? 32 : 1;
-        busWrite(vaddr, val);
+        memory->ppuWrite(vaddr, val);
         v += inc;
         break;
     }
@@ -219,13 +217,13 @@ uint8_t PPU::readRegister(uint16_t addr) {
         uint8_t data;
         if (v >= 0x3F00) {
             // palette reads are immediate
-            data = busRead(v);
+            data = memory->ppuRead(v);
 
         }
         else {
             // buffered read: return old buffer, then refill
             data = readBuffer;
-            readBuffer = busRead(v);
+            readBuffer = memory->ppuRead(v);
         }
         value = data;
 
@@ -250,83 +248,107 @@ void PPU::writeOAM(uint8_t data) {
     oam[registers[3]++] = data;
 }
 
+uint8_t* PPU::rawOAM() {
+    return oam;
+}
+
 // ----------------
 // Main clock step
 // ----------------
 
-void PPU::stepDot() {
-    // Pre-render line reset (scanline 261, cycle 1)
+void PPU::stepDot()
+{
+    // ──────────────────────────────────────────────────────────────────────
+    // 0) Pre‑render line reset  (scanline 261, dot 1)
+    // ──────────────────────────────────────────────────────────────────────
     if (scanline == 261 && cycle == 1) {
-        // Clear status flags
         flags.clear(PPUStatusFlag::Sprite0Hit);
         flags.clear(PPUStatusFlag::SpriteOverflow);
         flags.clear(PPUStatusFlag::VBlank);
         sprite0HitPossible = false;
         vblankFlag = false;
+        nmiTriggered = false;
 
-        // Reset write toggle and shifters
-        w = false;
+        w = false;                                // PPUSCROLL/PPUADDR latch
         patternShiftLo = patternShiftHi = 0;
         attribShiftLo = attribShiftHi = 0;
     }
 
-    bool renderEnabled = renderingEnabled();
+    // ──────────────────────────────────────────────────────────────────────
+    // 1) Cached “rendering on?” bits
+    // ──────────────────────────────────────────────────────────────────────
+    const bool bgEnable = (registers[1] & 0x08) != 0;
+    const bool spEnable = (registers[1] & 0x10) != 0;
+    const bool rendering = bgEnable || spEnable;
 
-    // Visible scanlines (0-239) and pre-render (261)
-    if (renderEnabled && (scanline < 240 || scanline == 261)) {
-        // Background fetch region: cycles 1-256 and 321-336
-        if ((cycle >= 1 && cycle <= 256) || (cycle >= 321 && cycle <= 336)) {
-            updateBackgroundShifters();
-            fetchBackgroundData();
-        }
+    // ──────────────────────────────────────────────────────────────────────
+    // 2) Background fetch / shifter pipeline
+    // ──────────────────────────────────────────────────────────────────────
+    if (renderingEnabled() &&
+        ((scanline < 240 && cycle >= 1 && cycle <= 256) ||   // visible
+            (cycle >= 321 && cycle <= 336) ||   // tile pre‑fetch
+            (scanline == 261 && cycle >= 321 && cycle <= 336)))    // pre‑render pre‑fetch
+    {
+        updateBackgroundShifters();
+        fetchBackgroundData();
+    }
 
-        // Cycle 256: vertical position increment
+    // ──────────────────────────────────────────────────────────────────────
+    // 3) Scroll bookkeeping (runs if *either* BG or sprites are on)
+    // ──────────────────────────────────────────────────────────────────────
+    if (rendering) {
         if (cycle == 256) {
             incrementY();
         }
-        // Cycle 257: horizontal copy and sprite evaluation
         if (cycle == 257) {
-            copyX();
-            evaluateSprites();
+            copyX();                         // dot 257
+            if (scanline < 240 || scanline == 261) {
+                evaluateSprites();
+            }
         }
-
-        // Pre-render line (261) dots 280-304: vertical copy
         if (scanline == 261 && cycle >= 280 && cycle <= 304) {
             copyY();
         }
     }
 
-    // Pixel rendering on visible scanlines
+    // ──────────────────────────────────────────────────────────────────────
+    // 4) Render a pixel   (visible scanlines, dots 1‑256)
+    // ──────────────────────────────────────────────────────────────────────
     if (scanline < 240 && cycle >= 1 && cycle <= 256) {
         renderPixel();
     }
 
-    // VBlank start
+    // ──────────────────────────────────────────────────────────────────────
+    // 5) Enter VBlank             (scanline 241, dot 1)
+    // ──────────────────────────────────────────────────────────────────────
     if (scanline == 241 && cycle == 1) {
         flags.set(PPUStatusFlag::VBlank);
         vblankFlag = true;
         vblankLatched = false;
 
-        if (nmiOutputEnabled()) {
+        if (nmiOutputEnabled()) {                 // PPUCTRL bit 7
             flags.set(PPUStatusFlag::NMI);
             nmiTriggered = true;
         }
     }
 
-    // Odd-frame pre-render skip: skip dot 339 on odd frames
-    if (scanline == 261 && cycle == 339 && renderEnabled && oddFrame) {
-        // Jump to start of next frame
-        cycle = 0;
+    // ──────────────────────────────────────────────────────────────────────
+    // 6) Odd‑frame cycle‑339 shortcut (only when rendering)
+    // ──────────────────────────────────────────────────────────────────────
+    if (scanline == 261 && cycle == 0 && rendering && oddFrame) {
+        cycle = 0;            // skip dot 340 → start new frame immediately
         scanline = 0;
         oddFrame = !oddFrame;
-        return;
+        return;               // early exit: frame finished
     }
 
-    // Advance dot and scanline
-    cycle++;
+    // ──────────────────────────────────────────────────────────────────────
+    // 7) Advance dot & scanline counters
+    // ──────────────────────────────────────────────────────────────────────
+    ++cycle;
     if (cycle > 340) {
         cycle = 0;
-        scanline++;
+        ++scanline;
         if (scanline > 261) {
             scanline = 0;
             oddFrame = !oddFrame;
@@ -350,14 +372,6 @@ const uint32_t* PPU::getFrameBuffer() const {
     return frameBuffer;
 }
 
-const uint8_t* PPU::getNameTables() const {
-    return nameTables;
-}
-
-const uint8_t* PPU::getPaletteTable() const {
-    return paletteTable;
-}
-
 bool PPU::isNmiTriggered() const {
     return nmiTriggered;
 }
@@ -374,70 +388,15 @@ bool PPU::renderingEnabled() const {
     return (registers[1] & 0x08) || (registers[1] & 0x10);
 }
 
-uint8_t PPU::busRead(uint16_t addr) {
-    // mirror into 0x0000–0x3FFF
-    uint16_t addr_ = addr & 0x3FFF;
-
-    // 1) Pattern-table: $0000–$1FFF → CHR via mapper
-    if (addr < 0x2000) {
-        return memory->readFromMapper(addr_);
-    }
-
-    // 2) Name-tables: $2000–$2FFF mirrored through $3EFF
-    if (addr < 0x3F00) {
-        uint16_t m = mirrorAddress(addr_);
-        return nameTables[m - 0x2000];
-    }
-
-    // 3) Palette: $3F00–$3F1F mirrored through $3FFF
-    uint8_t p = addr_ & 0x1F;
-    if ((p & 0x03) == 0) p &= 0x0F;       // universal‐background collapse
-    return paletteTable[p];
-}
-
-uint8_t PPU::busPeek(uint16_t addr) const {
-    uint16_t addr_ = addr & 0x3FFF;
-    if (addr < 0x2000) {
-        // Pattern tables: CHR data via mapper
-        return memory->readFromMapper(addr_);
-    }
-    else if (addr < 0x3F00) {
-        // Nametables region
-        uint16_t mAddr = mirrorAddress(addr_);
-        return nameTables[mAddr - 0x2000];
-    }
-    else {
-        // Palette region ($3F00-$3FFF mirrors every 32 bytes)
-        uint8_t p = addr_ & 0x1F;
-        if ((p & 0x03) == 0) p &= 0x0F;
-        return paletteTable[p];
-    }
-}
-
-void PPU::busWrite(uint16_t addr_, uint8_t val) {
-    uint16_t addr = addr_ & 0x3FFF;
-
-    if (addr < 0x2000) {
-        // CHR-RAM or CHR-ROM write
-        memory->writeToMapper(addr, val);
-    }
-    else if (addr < 0x3F00) {
-        // name-table write
-        uint16_t m = mirrorAddress(addr);
-        nameTables[m - 0x2000] = val;
-    }
-    else {
-        // palette write
-        uint8_t p = addr & 0x1F;
-        if ((p & 0x03) == 0) p &= 0x0F;
-        paletteTable[p] = val & 0x3F;
-    }
-}
-
 void PPU::evaluateSprites() {
     // clear out previous line’s data
     evaluatedSpriteCount = 0;
     sprite0HitPossible = false;
+
+    std::fill_n(spriteShiftLo, 8, 0);
+    std::fill_n(spriteShiftHi, 8, 0);
+    std::fill_n(spriteAttrs, 8, 0);
+    std::fill_n(spriteXCounter, 8, 0xFF);
 
     const int spriteHeight = (registers[0] & 0x20) ? 16 : 8;
     const uint8_t* OAM = oam;    // primary OAM, 64 entries × 4 bytes
@@ -462,6 +421,12 @@ void PPU::evaluateSprites() {
         // copy 4 bytes from primary OAM
         for (int b = 0; b < 4; ++b) {
             spriteScanline[s * 4 + b] = OAM[idx * 4 + b];
+        }
+        for (int s = evaluatedSpriteCount; s < 8; ++s) {
+            spriteShiftLo[s] = 0;
+            spriteShiftHi[s] = 0;
+            spriteXCounter[s] = 0xFF;   // never reaches 0
+            spriteAttrs[s] = 0;
         }
     }
 
@@ -502,8 +467,8 @@ void PPU::evaluateSprites() {
         }
 
         // fetch the two pattern bytes
-        uint8_t lo = busRead(addrLo);
-        uint8_t hi = busRead(addrHi);
+        uint8_t lo = memory->ppuRead(addrLo);
+        uint8_t hi = memory->ppuRead(addrHi);
 
         // apply H‐flip if requested
         if (flipH) {
@@ -520,6 +485,23 @@ void PPU::evaluateSprites() {
 }
 
 void PPU::renderPixel() {
+    // DEBUG: if *any* sprite pixel appears at x ≥ 256, print once
+    if ((cycle - 1) >= 256 && registers[1] & 0x10) {          // sprites enabled
+        for (int i = 0; i < evaluatedSpriteCount; ++i) {
+            if (spriteXCounter[i] == 0) {
+                uint8_t p0 = (spriteShiftLo[i] & 0x80) >> 7;
+                uint8_t p1 = (spriteShiftHi[i] & 0x80) >> 7;
+                if ((p1 << 1) | p0) {
+                    std::printf("[SPR] scan=%3d dot=%3d  slot=%d  X=%u  Y=%u\n",
+                        scanline, cycle - 1, i,
+                        spriteScanline[i * 4 + 3],
+                        spriteScanline[i * 4 + 0] + 1);
+                    break;
+                }
+            }
+        }
+    }
+
     int x = cycle - 1;
     int y = scanline;
 
@@ -617,7 +599,7 @@ void PPU::renderPixel() {
     }
 
     // fetch color and write to frame buffer
-    uint8_t colorIndex = busRead(0x3F00 + ((finalPalette << 2) | finalPixel)) & 0x3F;
+    uint8_t colorIndex = memory->ppuRead(0x3F00 + ((finalPalette << 2) | finalPixel)) & 0x3F;
     frameBuffer[y * SCREEN_WIDTH + x] = nesPalette[colorIndex];
 }
 
@@ -627,7 +609,7 @@ void PPU::fetchBackgroundData() {
         case 0: {
             // Log the v-register & the name-table address
             uint16_t nameAddr = 0x2000 | (v & 0x0FFF);
-            nextTileID = busRead(nameAddr);
+            nextTileID = memory->ppuRead(nameAddr);
             break;
         }
         case 2: {
@@ -636,7 +618,7 @@ void PPU::fetchBackgroundData() {
                     | (v & 0x0C00)
                     | ((v >> 4) & 0x38)
                     | ((v >> 2) & 0x07);
-                nextTileAttr = busRead(attrAddr);
+                nextTileAttr = memory->ppuRead(attrAddr);
             }
             else {
                 // still perform the fetch so PPU logic stays correct
@@ -644,20 +626,20 @@ void PPU::fetchBackgroundData() {
                     | (v & 0x0C00)
                     | ((v >> 4) & 0x38)
                     | ((v >> 2) & 0x07);
-                nextTileAttr = busRead(attrAddr);
+                nextTileAttr = memory->ppuRead(attrAddr);
             }
             break;
         }
         case 4: {
             uint8_t fineY = (v >> 12) & 7;
             uint16_t base = (registers[0] & 0x10) ? 0x1000 : 0x0000;
-            nextTileLo = busRead(base + nextTileID * 16 + fineY);
+            nextTileLo = memory->ppuRead(base + nextTileID * 16 + fineY);
             break;
         }
         case 6: {
             uint8_t fineY = (v >> 12) & 7;
             uint16_t base = (registers[0] & 0x10) ? 0x1000 : 0x0000;
-            nextTileHi = busRead(base + nextTileID * 16 + fineY + 8);
+            nextTileHi = memory->ppuRead(base + nextTileID * 16 + fineY + 8);
             reloadBackgroundShifters();
             incrementX();
             break;
@@ -711,19 +693,6 @@ void PPU::reloadBackgroundShifters() {
     uint8_t bits = (nextTileAttr >> (quad * 2)) & 3;
     attribShiftLo = (attribShiftLo & 0xFF00) | ((bits & 1) ? 0xFF : 0);
     attribShiftHi = (attribShiftHi & 0xFF00) | ((bits & 2) ? 0xFF : 0);
-}
-
-uint16_t PPU::mirrorAddress(uint16_t addr) const {
-    uint16_t nt = addr & 0x0FFF;
-    uint16_t table = (nt >> 10) & 0x03;
-    uint16_t offset = nt & 0x03FF;
-    if (mirrorMode == MirrorMode::HORIZONTAL) {
-        table = (table == 0 || table == 1) ? 0 : 1;
-    }
-    else {
-        table = (table == 0 || table == 2) ? 0 : 1;
-    }
-    return 0x2000 + (table << 10) + offset;
 }
 
 uint8_t PPU::reverse_bits(uint8_t b) {
