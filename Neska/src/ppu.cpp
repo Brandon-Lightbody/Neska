@@ -1,12 +1,10 @@
-﻿#include "ppu.h"
+﻿// ppu.cpp
+#include "ppu.h"
 #include "memory.h"
 #include <cstring>
 #include <iostream>
-#include <iomanip>
-#include <string>
-#include <sstream>
 
-#include "debugging/logger.h"
+#include "logger.h"
 
 // ----------------
 // PPUFlags
@@ -69,16 +67,14 @@ const uint32_t PPU::nesPalette[64] = {
 PPU::PPU(MirrorMode mode, Logger& logger)
     : mirrorMode(mode), memory(nullptr),
     cycle(0), scanline(0), v(0), t(0), fineX(0), w(false),
-    readBuffer(0), nmiTriggered(false), oddFrame(false),
+    readBuffer(0), nmiTriggered(false), oddFrame(false), reloadPending(false),
     evaluatedSpriteCount(0), attribShiftLo(0), attribShiftHi(0),
     patternShiftLo(0), patternShiftHi(0), nextTileID(0), nextTileAttr(0),
     nextTileLo(0), nextTileHi(0), scrollX_coarse(0), scrollY_coarse(0),
-    scrollY_fine(0), sprite0HitFlag(false), sprite0HitPossible(false),
-    vblankLatched(true), vblankFlag(false) 
+    scrollY_fine(0), sprite0HitFlag(false), sprite0HitPossible(false)
 {
     std::memset(registers, 0, sizeof(registers));
-    std::memset(nameTables, 0, sizeof(nameTables));
-    std::memset(paletteTable, 0, sizeof(paletteTable));
+    std::memset(vram, 0, sizeof(vram));
     std::memset(oam, 0, sizeof(oam));
     std::fill(std::begin(frameBuffer), std::end(frameBuffer), 0xFF000000);
     flags.clear();
@@ -89,15 +85,20 @@ PPU::PPU(MirrorMode mode, Logger& logger)
     std::memset(spriteAttrs, 0, sizeof(spriteAttrs));
 
     this->logger = &logger;
+
+    //// Init palette RAM to identity.
+    //for (int i = 0; i < 0x20; i++) {
+    //    vram[0x3F00 + i] = uint8_t(i & 0x3F);
+    //}
 }
 
 void PPU::reset() {
     std::memset(registers, 0, sizeof(registers));
     v = t = 0;
-    w = false;
-    fineX = 0;
+    w = false; fineX = 0;
     readBuffer = 0;
     nmiTriggered = false;
+    reloadPending = false;
     flags.clear();
     std::memset(evaluatedSpriteIndices, 0xFF, sizeof(evaluatedSpriteIndices));
     evaluatedSpriteCount = 0;
@@ -119,120 +120,119 @@ void PPU::setMirrorMode(MirrorMode mode) {
     mirrorMode = mode;
 }
 
+void PPU::setCHR(uint8_t* chrData, size_t size) {
+    for (size_t i = 0; i < size && i < 0x2000; ++i) {
+        vram[i] = chrData[i];
+    }
+}
+
 // ----------------
 // Register I/O
 // ----------------
 
 void PPU::writeRegister(uint16_t addr, uint8_t val) {
     uint8_t reg = addr & 0x7;
+    registers[reg] = val;
+
+    logger->logToConsole((const char*)addr);
+
     switch (reg) {
-    case 0: {  // PPUCTRL ($2000)
-        bool oldNmiOut = nmiOutput;
-        registers[0] = val;
-        nmiOutput = (val & 0x80) != 0;
-        // Update temporary VRAM address: bits 10–11 = nametable select
+    case 0: // PPUCTRL ($2000)
+        // t: ...00.. ........ = fine X scroll bank (bits 0–1 = name‑table select)
+        //    ..pp.. ........ = base nametable (bits 10–11)
         t = (t & 0xF3FF) | ((val & 0x03) << 10);
-        // If NMI was just enabled during VBlank, schedule it
-        if (!oldNmiOut && nmiOutput && vblankFlag) {
-            nmiPending = true;
-        }
         break;
-    }
-    case 1: { // PPUMASK ($2001)
-        registers[1] = val;
+
+    case 1: // PPUMASK ($2001)
+        // just store it; masking is checked in renderPixel()
         break;
-    }
-    case 3: { // OAMADDR ($2003)
-        registers[3] = val;
+
+    case 3: // OAMADDR ($2003)
+        // sets the OAM write index
+        // registers[3] holds current OAM address
         break;
-    }
-    case 4: { // OAMDATA ($2004)
-        registers[4] = val;
+
+    case 4: // OAMDATA ($2004)
+        // write to OAM at current index, then increment
         oam[registers[3]++] = val;
         break;
-    }
-    case 5: {  // PPUSCROLL ($2005)
+
+    case 5: // PPUSCROLL ($2005)
         if (!w) {
+            // first write: horizontal
             fineX = val & 0x07;
             t = (t & 0xFFE0) | (val >> 3);
             w = true;
         }
         else {
+            // second write: vertical
             t = (t & 0x8FFF) | ((val & 0x07) << 12);
             t = (t & 0xFC1F) | ((val & 0xF8) << 2);
             w = false;
         }
         break;
-    }
-    case 6: {  // PPUADDR ($2006)
-        registers[6] = val;
+
+    case 6: // PPUADDR ($2006)
         if (!w) {
+            // first write: high byte of t
             t = (t & 0x00FF) | ((val & 0x3F) << 8);
             w = true;
         }
         else {
+            // second write: low byte, then copy to v
             t = (t & 0xFF00) | val;
             v = t;
             w = false;
         }
         break;
-    }
-    case 7: {  // PPUDATA ($2007)
-        registers[7] = val;
-        uint16_t vaddr = v & 0x3FFF;
-        int inc = (registers[0] & 0x04) ? 32 : 1;
-        busWrite(vaddr, val);
-        v += inc;
-        break;
-    }
-    default:
-        // Writes to other regs ($2002/$2004/$2005/$2006 reads are irrelevant here)
-        registers[reg] = val;
-        break;
-    }
-}
 
-uint8_t PPU::peekRegister(uint16_t addr) const {
-    return registers[addr & 0x7];
+    case 7: // PPUDATA ($2007)
+        // write to VRAM via PPU's mirror logic
+        vramWrite(v & 0x3FFF, val);
+        // increment v
+        v += (registers[0] & 0x04) ? 32 : 1;
+        break;
+
+    default:
+        // $2002/$2004/$2005/$2006 reads are handled above; nothing else to do here
+        break;
+    }
 }
 
 uint8_t PPU::readRegister(uint16_t addr) {
     uint8_t reg = addr & 0x7;
     uint8_t value = 0;
 
-    static int statusReadsThisFrame = 0;
-
     switch (reg) {
-    case 2: { // PPUSTATUS ($2002)
+    case 2: // PPUSTATUS ($2002)
+        // top 3 bits = flags, bottom 5 bits = last buffered read
         value = flags.toByte() | (readBuffer & 0x1F);
-        // clear the vblank flag, but no longer reset 'w' here:
-        clearVBlank();
-        w = false;
+        // side effects:
+        flags.clear(PPUStatusFlag::VBlank);  // clear VBlank
+        w = false;                           // reset write toggle
         break;
-    }
-    case 4: { // OAMDATA ($2004)
+
+    case 4: // OAMDATA ($2004)
         // returns the byte at the current OAM address
         value = oam[registers[3]];
         break;
-    }
-    case 7: { // PPUDATA ($2007)
-        uint8_t data;
-        if (v >= 0x3F00) {
-            // palette reads are immediate
-            data = busRead(v);
 
+    case 7: { // PPUDATA ($2007)
+        uint16_t addr = v & 0x3FFF;
+        if (addr >= 0x3F00) {
+            // Palette reads are immediate
+            value = vram[mirrorAddress(addr)];
         }
         else {
-            // buffered read: return old buffer, then refill
-            data = readBuffer;
-            readBuffer = busRead(v);
+            // buffered read
+            value = readBuffer;
+            readBuffer = vramRead(addr);
         }
-        value = data;
-
-        // advance v (1 or 32)
+        // increment v by either 1 or 32 (based on PPUCTRL bit 2)
         v += (registers[0] & 0x04) ? 32 : 1;
         break;
     }
+
     default:
         // $2000, $2001, $2003, $2005, $2006 are write‑only (or harmless to echo)
         value = registers[reg];
@@ -247,7 +247,9 @@ uint8_t PPU::readRegister(uint16_t addr) {
 // ----------------
 
 void PPU::writeOAM(uint8_t data) {
-    oam[registers[3]++] = data;
+    uint8_t addr = registers[3];
+    oam[addr++] = data;
+    registers[3] = addr;
 }
 
 // ----------------
@@ -255,47 +257,39 @@ void PPU::writeOAM(uint8_t data) {
 // ----------------
 
 void PPU::stepDot() {
-    // Pre-render line reset (scanline 261, cycle 1)
-    if (scanline == 261 && cycle == 1) {
-        // Clear status flags
-        flags.clear(PPUStatusFlag::Sprite0Hit);
-        flags.clear(PPUStatusFlag::SpriteOverflow);
-        flags.clear(PPUStatusFlag::VBlank);
-        sprite0HitPossible = false;
-        vblankFlag = false;
+    bool rendering = (registers[1] & 0x18);
 
-        // Reset write toggle and shifters
-        w = false;
-        patternShiftLo = patternShiftHi = 0;
-        attribShiftLo = attribShiftHi = 0;
-    }
+    // Visible scanlines (0–239) and pre‑render line (261)
+    if ((scanline < 240 || scanline == 261) && rendering) {
+        if (scanline == 241 && cycle == 1) {
+            vblankFlag = true;
+        }
 
-    bool renderEnabled = renderingEnabled();
-
-    // Visible scanlines (0-239) and pre-render (261)
-    if (renderEnabled && (scanline < 240 || scanline == 261)) {
-        // Background fetch region: cycles 1-256 and 321-336
+        // Background fetch region: dots 1–256 and 321–336
         if ((cycle >= 1 && cycle <= 256) || (cycle >= 321 && cycle <= 336)) {
+
+            // 1) Shift the background shifters
             updateBackgroundShifters();
+
             fetchBackgroundData();
         }
 
-        // Cycle 256: vertical position increment
+        // 256: increment vertical position
         if (cycle == 256) {
             incrementY();
         }
-        // Cycle 257: horizontal copy and sprite evaluation
+        // 257: horizontal copy from t → v, sprite evaluation
         if (cycle == 257) {
             copyX();
             evaluateSprites();
         }
-
-        // Pre-render line (261) dots 280-304: vertical copy
+        // Pre‑render line (261) dots 280–304: vertical copy from t → v
         if (scanline == 261 && cycle >= 280 && cycle <= 304) {
             copyY();
         }
     }
 
+    // Sprite fetch pipeline (dots 321–336) happens in evaluateSprites() and your sprite setup code
     // Pixel rendering on visible scanlines
     if (scanline < 240 && cycle >= 1 && cycle <= 256) {
         renderPixel();
@@ -304,25 +298,24 @@ void PPU::stepDot() {
     // VBlank start
     if (scanline == 241 && cycle == 1) {
         flags.set(PPUStatusFlag::VBlank);
-        vblankFlag = true;
         vblankLatched = false;
-
-        if (nmiOutputEnabled()) {
-            flags.set(PPUStatusFlag::NMI);
+        if (registers[0] & 0x80) {  // NMI enabled?
             nmiTriggered = true;
+            flags.set(PPUStatusFlag::NMI);
         }
     }
 
-    // Odd-frame pre-render skip: skip dot 339 on odd frames
-    if (scanline == 261 && cycle == 339 && renderEnabled && oddFrame) {
-        // Jump to start of next frame
-        cycle = 0;
-        scanline = 0;
-        oddFrame = !oddFrame;
-        return;
+    // Pre‑render line reset
+    if (scanline == 261 && cycle == 1) {
+        flags.clear(PPUStatusFlag::Sprite0Hit);
+        flags.clear(PPUStatusFlag::SpriteOverflow);
+        flags.clear(PPUStatusFlag::VBlank);
+        nmiTriggered = false;
+        sprite0HitPossible = false;
+        vblankFlag = false;
     }
 
-    // Advance dot and scanline
+    // Advance PPU dot and scanline, handle odd‑frame timing
     cycle++;
     if (cycle > 340) {
         cycle = 0;
@@ -331,6 +324,10 @@ void PPU::stepDot() {
             scanline = 0;
             oddFrame = !oddFrame;
         }
+    }
+    // Skip cycle 0 on odd pre‑render frame when rendering is enabled
+    if (scanline == 261 && cycle == 0 && rendering && oddFrame) {
+        cycle = 1;
     }
 }
 
@@ -350,12 +347,8 @@ const uint32_t* PPU::getFrameBuffer() const {
     return frameBuffer;
 }
 
-const uint8_t* PPU::getNameTables() const {
-    return nameTables;
-}
-
-const uint8_t* PPU::getPaletteTable() const {
-    return paletteTable;
+const uint8_t* PPU::getVRAM() const {
+    return vram;
 }
 
 bool PPU::isNmiTriggered() const {
@@ -372,66 +365,6 @@ void PPU::clearNmiFlag() {
 
 bool PPU::renderingEnabled() const {
     return (registers[1] & 0x08) || (registers[1] & 0x10);
-}
-
-uint8_t PPU::busRead(uint16_t addr) {
-    // mirror into 0x0000–0x3FFF
-    uint16_t addr_ = addr & 0x3FFF;
-
-    // 1) Pattern-table: $0000–$1FFF → CHR via mapper
-    if (addr < 0x2000) {
-        return memory->readFromMapper(addr_);
-    }
-
-    // 2) Name-tables: $2000–$2FFF mirrored through $3EFF
-    if (addr < 0x3F00) {
-        uint16_t m = mirrorAddress(addr_);
-        return nameTables[m - 0x2000];
-    }
-
-    // 3) Palette: $3F00–$3F1F mirrored through $3FFF
-    uint8_t p = addr_ & 0x1F;
-    if ((p & 0x03) == 0) p &= 0x0F;       // universal‐background collapse
-    return paletteTable[p];
-}
-
-uint8_t PPU::busPeek(uint16_t addr) const {
-    uint16_t addr_ = addr & 0x3FFF;
-    if (addr < 0x2000) {
-        // Pattern tables: CHR data via mapper
-        return memory->readFromMapper(addr_);
-    }
-    else if (addr < 0x3F00) {
-        // Nametables region
-        uint16_t mAddr = mirrorAddress(addr_);
-        return nameTables[mAddr - 0x2000];
-    }
-    else {
-        // Palette region ($3F00-$3FFF mirrors every 32 bytes)
-        uint8_t p = addr_ & 0x1F;
-        if ((p & 0x03) == 0) p &= 0x0F;
-        return paletteTable[p];
-    }
-}
-
-void PPU::busWrite(uint16_t addr_, uint8_t val) {
-    uint16_t addr = addr_ & 0x3FFF;
-
-    if (addr < 0x2000) {
-        // CHR-RAM or CHR-ROM write
-        memory->writeToMapper(addr, val);
-    }
-    else if (addr < 0x3F00) {
-        // name-table write
-        uint16_t m = mirrorAddress(addr);
-        nameTables[m - 0x2000] = val;
-    }
-    else {
-        // palette write
-        uint8_t p = addr & 0x1F;
-        if ((p & 0x03) == 0) p &= 0x0F;
-        paletteTable[p] = val & 0x3F;
-    }
 }
 
 void PPU::evaluateSprites() {
@@ -502,8 +435,8 @@ void PPU::evaluateSprites() {
         }
 
         // fetch the two pattern bytes
-        uint8_t lo = busRead(addrLo);
-        uint8_t hi = busRead(addrHi);
+        uint8_t lo = memory->ppuRead(addrLo);
+        uint8_t hi = memory->ppuRead(addrHi);
 
         // apply H‐flip if requested
         if (flipH) {
@@ -617,47 +550,39 @@ void PPU::renderPixel() {
     }
 
     // fetch color and write to frame buffer
-    uint8_t colorIndex = busRead(0x3F00 + ((finalPalette << 2) | finalPixel)) & 0x3F;
+    uint8_t colorIndex = vramRead(0x3F00 + ((finalPalette << 2) | finalPixel)) & 0x3F;
     frameBuffer[y * SCREEN_WIDTH + x] = nesPalette[colorIndex];
 }
 
 void PPU::fetchBackgroundData() {
     if ((cycle >= 1 && cycle <= 256) || (cycle >= 321 && cycle <= 336)) {
+        updateBackgroundShifters();
         switch ((cycle - 1) & 7) {
         case 0: {
             // Log the v-register & the name-table address
             uint16_t nameAddr = 0x2000 | (v & 0x0FFF);
-            nextTileID = busRead(nameAddr);
+            nextTileID = vramRead(nameAddr);
             break;
+
         }
         case 2: {
-            if (scanline < 240) {
-                uint16_t attrAddr = 0x23C0
-                    | (v & 0x0C00)
-                    | ((v >> 4) & 0x38)
-                    | ((v >> 2) & 0x07);
-                nextTileAttr = busRead(attrAddr);
-            }
-            else {
-                // still perform the fetch so PPU logic stays correct
-                uint16_t attrAddr = 0x23C0
-                    | (v & 0x0C00)
-                    | ((v >> 4) & 0x38)
-                    | ((v >> 2) & 0x07);
-                nextTileAttr = busRead(attrAddr);
-            }
+            uint16_t addr = 0x23C0
+                | (v & 0x0C00)
+                | ((v >> 4) & 0x38)
+                | ((v >> 2) & 0x07);
+            nextTileAttr = vramRead(addr);
             break;
         }
         case 4: {
             uint8_t fineY = (v >> 12) & 7;
             uint16_t base = (registers[0] & 0x10) ? 0x1000 : 0x0000;
-            nextTileLo = busRead(base + nextTileID * 16 + fineY);
+            nextTileLo = memory->ppuRead(base + nextTileID * 16 + fineY);
             break;
         }
         case 6: {
             uint8_t fineY = (v >> 12) & 7;
             uint16_t base = (registers[0] & 0x10) ? 0x1000 : 0x0000;
-            nextTileHi = busRead(base + nextTileID * 16 + fineY + 8);
+            nextTileHi = memory->ppuRead(base + nextTileID * 16 + fineY + 8);
             reloadBackgroundShifters();
             incrementX();
             break;
@@ -670,15 +595,18 @@ void PPU::incrementX() {
     if ((v & 0x001F) == 31) {
         v &= ~0x001F;
         v ^= 0x0400;
+
     }
     else {
         v++;
+
     }
 }
 
 void PPU::incrementY() {
     if ((v & 0x7000) != 0x7000) {
         v += 0x1000;
+
     }
     else {
         v &= ~0x7000;
@@ -687,6 +615,7 @@ void PPU::incrementY() {
         else if (y == 31) y = 0;
         else y++;
         v = (v & ~0x03E0) | (y << 5);
+
     }
 }
 
@@ -714,16 +643,59 @@ void PPU::reloadBackgroundShifters() {
 }
 
 uint16_t PPU::mirrorAddress(uint16_t addr) const {
-    uint16_t nt = addr & 0x0FFF;
-    uint16_t table = (nt >> 10) & 0x03;
-    uint16_t offset = nt & 0x03FF;
-    if (mirrorMode == MirrorMode::HORIZONTAL) {
-        table = (table == 0 || table == 1) ? 0 : 1;
+    addr &= 0x3FFF;
+    if (addr < 0x2000) return addr;
+    if (addr < 0x3F00) {
+        uint16_t off = (addr - 0x2000) % 0x1000;
+        int     pg = off / 0x400;
+        int     idx = off % 0x400;
+        switch (mirrorMode) {
+        case MirrorMode::HORIZONTAL:
+            if (pg == 1) pg = 0;
+            else if (pg >= 2) pg = 1;
+            break;
+        case MirrorMode::VERTICAL:
+            if (pg >= 2) pg -= 2;
+            break;
+        case MirrorMode::FOUR_SCREEN:
+            break;
+        case MirrorMode::SINGLE_SCREEN:
+            pg = 0;
+            break;
+        }
+        return 0x2000 + pg * 0x400 + idx;
     }
-    else {
-        table = (table == 0 || table == 2) ? 0 : 1;
+    return 0x3F00 + (addr % 0x20);
+}
+
+uint8_t PPU::vramRead(uint16_t addr) const {
+    addr &= 0x3FFF;
+    // --- CHR ($0000–$1FFF) comes from the cartridge/mapper ---
+    if (addr < 0x2000) {
+        return memory->ppuRead(addr);
     }
-    return 0x2000 + (table << 10) + offset;
+    // --- nametables ($2000–$2FFF) and palette ($3F00–$3F1F) live in vram[] ---
+    uint16_t m = mirrorAddress(addr);
+    if (m < 0x3F00)
+        return vram[m];
+    else
+        // palette mirrors every 32 bytes
+        return vram[0x3F00 + (m & 0x1F)];
+}
+
+void PPU::vramWrite(uint16_t addr, uint8_t val) {
+    addr &= 0x3FFF;
+    // --- CHR writes must go back into CHR‐RAM (if present) or be ignored ---
+    if (addr < 0x2000) {
+        memory->ppuWrite(addr, val);
+        return;
+    }
+    // --- name‐table / palette land in the PPU’s own RAM ---
+    uint16_t m = mirrorAddress(addr);
+    if (m < 0x3F00)
+        vram[m] = val;
+    else
+        vram[0x3F00 + (m & 0x1F)] = val;
 }
 
 uint8_t PPU::reverse_bits(uint8_t b) {

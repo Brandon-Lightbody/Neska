@@ -4,7 +4,7 @@
 #include <vector>
 #include <cstring>
 #include <iostream>
-#include "debugging/logger.h"
+#include "logger.h"
 #include "core.h"
 
 struct PPUFlags {
@@ -39,11 +39,11 @@ public:
     // Update mirror mode.
     void setMirrorMode(MirrorMode mode);
 
+    void setCHR(uint8_t* chrData, size_t size);
+
     // CPU register read/write (0x2000-0x2007).
     uint8_t readRegister(uint16_t addr);
     void writeRegister(uint16_t addr, uint8_t value);
-
-    uint8_t peekRegister(uint16_t addr) const;
 
     void stepDot(); // single PPU clock (dot) step
 
@@ -57,8 +57,8 @@ public:
     int getScanline() const { return scanline; }
     int getCycle()    const { return cycle; }
 
-    const uint8_t* getNameTables() const;
-    const uint8_t* getPaletteTable() const;
+    // For debugging: get raw VRAM.
+    const uint8_t* getVRAM() const;
 
     // NMI: triggered when entering VBlank.
     bool isNmiTriggered() const;
@@ -74,12 +74,10 @@ public:
     void reloadBackgroundShifters();
     bool renderingEnabled() const;
 
-    uint8_t busRead(uint16_t addr);
-    uint8_t busPeek(uint16_t addr) const;
-    void busWrite(uint16_t addr, uint8_t val);
-
     // Helpers.
     uint16_t mirrorAddress(uint16_t addr) const;
+    uint8_t vramRead(uint16_t addr) const;
+    void vramWrite(uint16_t addr, uint8_t data);
 
     bool isVBlank() const;
     bool nmiOutputEnabled() const;
@@ -105,8 +103,8 @@ private:
     // PPU registers (0-7, mirrored).
     uint8_t registers[8];
 
-    uint8_t nameTables[0x1000];    // 4 × 1 KB name-tables (0x2000–0x2FFF)
-    uint8_t paletteTable[0x20];    // 32 bytes palette RAM (0x3F00–0x3F1F)
+    // VRAM (pattern tables, name tables, palette).
+    uint8_t vram[0x4000];
 
     // OAM memory (sprite RAM), 256 bytes.
     uint8_t oam[256];
@@ -129,9 +127,6 @@ private:
 
     // VBlank flag and NMI trigger.
     bool nmiTriggered;
-
-    bool nmiOutput;
-    bool nmiPending;
 
     // Odd-frame flag (for even/odd frame timing).
     bool oddFrame;
@@ -170,4 +165,6 @@ private:
     int evaluatedSpriteIndices[8];     // OAM indices of the evaluated sprites.            // Flag for sprite 0 hit on the current scanline.
     uint8_t spriteScanline[32]{};
     bool sprite0HitFlag;
+
+    bool reloadPending;
 };

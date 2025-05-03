@@ -1,107 +1,67 @@
 ﻿// main.cpp
 #include <memory>
 #include <iostream>
+#include <fstream>
 #include <iomanip>
-
-#include "debugging/Debugger.h"
-#include "debugging/logger.h"
 
 #include "memory.h"
 #include "ppu.h"
 #include "cpu.h"
 #include "emulator.h"
-#include "renderer/cpu/cpu_renderer.h"
+#include "renderer.h"
+#include "logger.h"
 
-void dumpPalette(const uint8_t* pal) {
-    std::cout << ">>> PPU Palette RAM <<<\n";
-    for (int i = 0; i < 32; i++) {
-        // new line every 8 entries
-        if (i % 8 == 0) std::cout << " ";
-        std::cout
-            << std::hex << std::uppercase << std::setw(2) << std::setfill('0')
-            << int(pal[i])
-            << " ";
-    }
-    std::cout << std::dec << "\n\n";
-}
-
-
-int main(int argc, char** argv) {
-    // 1) Logger
+int main() {
     auto logger = std::make_unique<Logger>();
     logger->toggleLogging(true, false);
 
-    // 2) Core subsystems
+    // 1) Construct core subsystems
     auto memory = std::make_unique<Memory>();
     auto ppu = std::make_unique<PPU>(MirrorMode::HORIZONTAL, *logger);
     auto cpu = std::make_unique<CPU>(*memory, *ppu);
 
+    // 2) Wire them together
     memory->setPPU(ppu.get());
     memory->setCPU(cpu.get());
     ppu->setMemory(memory.get());
 
-    // 3) Load ROM
+    // 3) Load the ROM (header→PRG→CHR) and get its mirroring mode
     std::vector<uint8_t> chrData;
-    MirrorMode mirror = memory->loadROM("roms/Donkey Kong.nes", chrData);
+    MirrorMode mirror = memory->loadROM("roms/donkey_kong.nes", chrData);
     ppu->setMirrorMode(mirror);
+    ppu->setCHR(chrData.data(), chrData.size());
 
-    // 4) Reset CPU/PPU and wrap them in the emulator
-    cpu->reset();
-    ppu->reset();
+    // 4) Reset CPU & PPU to start executing the game's reset/vector code
+    cpu->reset();   // loads PC from $FFFC/$FFFD
+    ppu->reset();   // clears all internal state
+
     Emulator emu(*cpu, *ppu);
 
-    // 5) Renderer
-    constexpr int SCALE = 4;
-    Renderer renderer(
-        SCREEN_WIDTH * SCALE,
-        SCREEN_HEIGHT * SCALE,
-        "Neska"
-    );
+    // 7) Create SDL window/renderer
+    Renderer renderer(SCREEN_WIDTH * 4,
+        SCREEN_HEIGHT * 4,
+        "NES Emulator");
 
-    // 6) Debugger + GUI
-    Debugger debugger(emu, *memory);
-    debugger.initGui(renderer.getSDLWindow(), renderer.getSDLRenderer());
-
-    // 7) Main loop (skip the first two frames, then render normally)
-    const int FRAME_DELAY = 1000 / 60;
-    int skipFrames = 2;
+    // 8) Main loop: step until a frame is done, then draw it
     while (renderer.pollEvents(*memory)) {
-        debugger.update();
-
-        if (!debugger.isPaused()) {
-            // a) Run until the PPU signals end-of-frame
-            while (!emu.frameComplete()) {
-                emu.step();
-            }
-
-            // b) If we’ve skipped fewer than two, just consume the frame
-            if (skipFrames > 0) {
-                --skipFrames;
-            }
-            else {
-                // c) Now that v and the name‐table are initialized, draw!
-                auto raw = emu.getFrameBuffer();
-                auto scaled = renderer.upscaleImage(
-                    raw, SCREEN_WIDTH, SCREEN_HEIGHT, SCALE
-                );
-                renderer.renderFrame(scaled.data());
-            }
-
-            // d) Prepare for the next frame
-            emu.resetFrameFlag();
+        while (!emu.frameComplete()) {
+            emu.step();
         }
 
-        // 8) GUI + Present + Throttle
-        debugger.newFrameGui();
-        debugger.drawGui();
-        debugger.renderGui();
+        // Grab the 256×240 ARGB buffer and upscale 4× for the window
+        const uint32_t* rawFrame = emu.getFrameBuffer();
+        auto scaled = renderer.upscaleImage(rawFrame,
+            SCREEN_WIDTH,
+            SCREEN_HEIGHT,
+            4);
 
-        renderer.present();
+        renderer.renderFrame(scaled.data());
+        emu.resetFrameFlag();
+        
         logger->handleLogRequests();
-        SDL_Delay(FRAME_DELAY);
+
+        SDL_Delay(16);  // ~60 Hz
     }
 
-    // 9) Cleanup
-    debugger.shutdownGui();
     return 0;
 }

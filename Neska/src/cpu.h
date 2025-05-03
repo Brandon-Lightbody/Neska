@@ -52,8 +52,6 @@ public:
     // Execute one instruction
     int tickCycle();
 
-    int getTotalCycles() const;
-
     // Registers
     uint16_t PC;
     uint8_t  A, X, Y, SP, status;
@@ -66,14 +64,11 @@ public:
 
     bool nmiRequested = false;
 private:
-    int totalCycles;
-
     Memory* memory;
     PPU* ppu;
 
     // Bus read/write (hook these up to memory/map)
     uint8_t readByte(uint16_t addr);
-    uint8_t peekByte(uint16_t a) const;
     void    writeByte(uint16_t addr, uint8_t data);
 
     // Addressing-mode helpers
