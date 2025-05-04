@@ -3,6 +3,10 @@
 file(GLOB_RECURSE NES_SOURCES
   "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/*.h"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/debugging/*.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/debugging/*.h"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/*.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/*.h"
 )
 
 add_executable(Neska
