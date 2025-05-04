@@ -15,10 +15,10 @@ public:
 	void toggleLogging(bool consoleLogging, bool fileLogging);
 
 	// Logs debug output to the console.
-	void logToConsole(const char* debugOutput);
+	void logToConsole(std::string debugOutput);
 
 	// Logs debug output to the desired file, creating said file should it not exist.
-	void logToFile(const char* debugOutput);
+	void logToFile(std::string debugOutput);
 	
 	// Merges all debug output into as few writes as possible, then handles all writes.
 	void handleLogRequests();
