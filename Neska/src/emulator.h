@@ -2,6 +2,7 @@
 
 #include "cpu.h"
 #include "ppu.h"
+#include "core.h"
 
 // Drives CPU and PPU in lockstep: 1 CPU clock = 3 PPU dots,
 // handles NMI wiring, DMA stalls, and frame completion.
@@ -23,10 +24,12 @@ public:
     void resetFrameFlag();
 
     // Grab the latest 256×240 ARGB frame buffer from the PPU
-    const uint32_t* getFrameBuffer() const;
-
+    const uint8_t* getFrameBuffer() const;
+    const uint32_t* getRgbFrame();
 private:
     CPU& cpu;
     PPU& ppu;
     bool frameDone;
+
+    std::array<uint32_t, TOTAL_PIXELS_UNSCALED> rgbBuffer;
 };

@@ -26,7 +26,7 @@ int main() {
     ppu->setMemory(memory.get());
 
     // 3) Load ROM
-    MirrorMode mirror = memory->loadROM("roms/PAC-MAN.nes");
+    MirrorMode mirror = memory->loadROM("roms/Donkey Kong.nes");
     ppu->setMirrorMode(mirror);
 
     // 4) Reset CPU/PPU and wrap them in the emulator
