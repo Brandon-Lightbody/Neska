@@ -47,25 +47,6 @@ void PPUFlags::clear(PPUStatusFlag flag) {
     }
 }
 
-// ----------------
-// Static palette
-// ----------------
-
-const uint32_t PPU::nesPalette[64] = {
-    0xFF757575,0xFF271B8F,0xFF0000AB,0xFF47009F, 0xFF8F0077,0xFFAB0013,0xFFA70000,0xFF7F0B00,
-    0xFF432F00,0xFF004700,0xFF005100,0xFF003F17, 0xFF1B3F5F,0xFF000000,0xFF000000,0xFF000000,
-    0xFFBCBCBC,0xFF0073EF,0xFF233BEF,0xFF8300F3, 0xFFBF00BF,0xFFCF3F7F,0xFFCF7B3F,0xFFE7AB00,
-    0xFFB7CF00,0xFF7BCC00,0xFF00B700,0xFF00A1A1, 0xFFE7E7E7,0xFF000000,0xFF000000,0xFF000000,
-    0xFFFFFFFF,0xFF3FBFFF,0xFF5F97FF,0xFFA78BFD, 0xFFF77BFF,0xFFFF77B7,0xFFFFB33F,0xFFFFCC3F,
-    0xFF99E718,0xFF4FE453,0xFF00E757,0xFF00D7BB, 0xFF33CCCC,0xFF777777,0xFF000000,0xFF000000,
-    0xFFFFFFFF,0xFFA4E7FF,0xFFB3DFFF,0xFFE3CBFF, 0xFFFFC7FF,0xFFFFC7DB,0xFFFFD7AB,0xFFFFE7A3,
-    0xFFE3F79F,0xFFB3EEAB,0xFF99E7A7,0xFF99D7CF, 0xFFABF7FF,0xFFCCCCCC,0xFF000000,0xFF000000
-};
-
-// ----------------
-// Constructor / reset
-// ----------------
-
 PPU::PPU(MirrorMode mode, Logger& logger)
     : mirrorMode(mode), memory(nullptr),
     cycle(0), scanline(0), v(0), t(0), fineX(0), w(false),
@@ -485,23 +466,6 @@ void PPU::evaluateSprites() {
 }
 
 void PPU::renderPixel() {
-    // DEBUG: if *any* sprite pixel appears at x ≥ 256, print once
-    if ((cycle - 1) >= 256 && registers[1] & 0x10) {          // sprites enabled
-        for (int i = 0; i < evaluatedSpriteCount; ++i) {
-            if (spriteXCounter[i] == 0) {
-                uint8_t p0 = (spriteShiftLo[i] & 0x80) >> 7;
-                uint8_t p1 = (spriteShiftHi[i] & 0x80) >> 7;
-                if ((p1 << 1) | p0) {
-                    std::printf("[SPR] scan=%3d dot=%3d  slot=%d  X=%u  Y=%u\n",
-                        scanline, cycle - 1, i,
-                        spriteScanline[i * 4 + 3],
-                        spriteScanline[i * 4 + 0] + 1);
-                    break;
-                }
-            }
-        }
-    }
-
     int x = cycle - 1;
     int y = scanline;
 
@@ -598,9 +562,8 @@ void PPU::renderPixel() {
         }
     }
 
-    // fetch color and write to frame buffer
     uint8_t colorIndex = memory->ppuRead(0x3F00 + ((finalPalette << 2) | finalPixel)) & 0x3F;
-    frameBuffer[y * SCREEN_WIDTH + x] = nesPalette[colorIndex];
+    frameBuffer[y * SCREEN_WIDTH + x] = colorIndex;
 }
 
 void PPU::fetchBackgroundData() {

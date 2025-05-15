@@ -67,58 +67,50 @@ void CPU::irq() {
 }
 
 int CPU::tickCycle() {
-    // 1) If we're in a DMA-stall, just burn one cycle
+    // Handle DMA stall cycles first
     if (stallCycles > 0) {
-        stallCycles--;
+        --stallCycles;
+        ++totalCycles;
         return 1;
     }
 
-    int cyclesConsumed = 0;
-
-    // 2) If we just finished the previous instruction, start a new one
+    // If we're starting a new instruction
     if (cyclesRemaining == 0) {
+        // Handle any pending interrupts before executing instructions
         if (nmiRequested) {
             nmiRequested = false;
             nmi();
         }
-
-        // a) Handle any pending NMI (highest priority), then IRQ
-        if (nmiRequested) {
-            nmiRequested = false;
-            nmi();
-        }
-        else {
+        else if (!getFlag(FLAG_INTERRUPT)) {
             irq();
         }
 
-        // b) Fetch opcode
+        // Fetch next opcode
         opcode = readByte(PC++);
         const Instruction& ins = instructionTable[opcode];
 
-        cyclesRemaining += ins.cycles;
+        // Base cycle count for the instruction
+        cyclesRemaining = ins.cycles;
 
-        // d) Addressing‑mode fetch (may return an extra “page‑cross” cycle)
+        // Addressing mode resolution (may add a page-cross penalty)
         bool pageCross = (this->*ins.addrmode)();
 
-        // e) Add page‑cross penalty on ABX/ABY/REL
+        // Add additional cycle if page crossing on certain addressing modes
         if (pageCross &&
             (ins.mode == AddrMode::ABX ||
                 ins.mode == AddrMode::ABY ||
                 ins.mode == AddrMode::REL)) {
-            cyclesRemaining++;
+            ++cyclesRemaining;
         }
 
-        // f) Execute the operation (may itself return extra cycles)
+        // Execute instruction logic (may add additional cycles)
         cyclesRemaining += (this->*ins.operate)();
     }
 
-    // 3) Burn one CPU cycle
-    cyclesRemaining--;
-    cyclesConsumed++;
-
-    totalCycles++;
-
-    return cyclesConsumed;
+    // Consume a CPU cycle
+    --cyclesRemaining;
+    ++totalCycles;
+    return 1; // Always return at least 1 cycle consumed per tick
 }
 
 int CPU::getTotalCycles() const {

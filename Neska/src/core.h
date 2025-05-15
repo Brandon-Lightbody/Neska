@@ -10,7 +10,7 @@ constexpr int TOTAL_PIXELS_UNSCALED = SCREEN_WIDTH * SCREEN_HEIGHT;
 constexpr int TOTAL_PIXELS_SCALED = (SCREEN_WIDTH * SCREEN_HEIGHT) * SCALE_FACTOR;
 
 constexpr int FRAME_DELAY = 1000 / 60;
-constexpr int SKIP_FRAMES = 60;
+constexpr int SKIP_FRAMES = 2;
 
 enum class MirrorMode {
     HORIZONTAL,

@@ -97,7 +97,6 @@ private:
     // OAM memory (sprite RAM), 256 bytes.
     uint8_t oam[256];
 
-    // Final output: 256x240 ARGB.
     uint8_t frameBuffer[SCREEN_WIDTH * SCREEN_HEIGHT];
 
     // Loopy registers and internal variables.

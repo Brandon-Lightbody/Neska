@@ -18,6 +18,11 @@ void Emulator::step() {
     for (int i = 0; i < cpuClocks * 3; ++i) {
         ppu.stepDot();
 
+        if (ppu.isNmiTriggered()) {
+            cpu.requestNmi();
+            ppu.clearNmiFlag();      // make sure we don’t retrigger repeatedly
+        }
+
         // 3) Detect end-of-frame: PPU has wrapped back to scanline 0, cycle 0
         if (ppu.getScanline() == 0 && ppu.getCycle() == 0) {
             frameDone = true;

@@ -48,6 +48,8 @@ Renderer::~Renderer()
 
 void Renderer::renderFrame()
 {
+    assert(pixelBuffer.size() == static_cast<size_t>(width * height));
+
     SDL_UpdateTexture(texture, nullptr, pixelBuffer.data(), width * sizeof(uint32_t));
     SDL_RenderClear(sdlRenderer);
     SDL_RenderTexture(sdlRenderer, texture, nullptr, nullptr);
@@ -58,8 +60,7 @@ void Renderer::presentFrame() {
 }
 
 void Renderer::clearPixelBuffer() {
-    pixelBuffer.clear();
-    pixelBuffer.shrink_to_fit();
+    std::fill(pixelBuffer.begin(), pixelBuffer.end(), indexToColor(0));
 }
 
 bool Renderer::pollEvents(MemoryBus& memory)
@@ -125,13 +126,10 @@ void Renderer::upscaleImage(const uint8_t* source, int sw, int sh, int scale)
         for (int x = 0; x < dw; x++) {
             int sx = x / scale;
 
-            // Map the 8-bit index → 32-bit colour
+            // Look up the NES palette index from the original frame
             uint8_t idx = source[sy * sw + sx];
-            pixelBuffer[y * dw + x] = indexToColor(x);
-
-            if (sx >= sw || sy >= sh) {
-                std::cout << "Overflow at upscale (sx=" << sx << ", sy=" << sy << ")\n";
-            }
+            // Convert that 8-bit index into a 32-bit ARGB colour
+            pixelBuffer[y * dw + x] = indexToColor(idx);
         }
     }
 
