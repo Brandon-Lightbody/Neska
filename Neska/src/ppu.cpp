@@ -368,7 +368,7 @@ void PPU::renderFrame() {
 // Accessors
 // ----------------
 
-const uint32_t* PPU::getFrameBuffer() const {
+const uint8_t* PPU::getFrameBuffer() const {
     return frameBuffer;
 }
 

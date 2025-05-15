@@ -10,18 +10,23 @@ public:
     Renderer(int w, int h, const std::string& title);
     ~Renderer();
 
-    void renderFrame(const uint32_t* pixels);
-    void present();
     bool pollEvents(MemoryBus& memory);
+    void processDebugGuiEvents(SDL_Event event);
 
-    std::vector<uint32_t> upscaleImage(const uint32_t* source, int sw, int sh, int scale);
-
+    void transformPixelBuffer(const uint8_t* idxBuffer);
+    void upscaleImage(const uint8_t* source, int sw, int sh, int scale);
+    void renderFrame();
+    void presentFrame();
+    void clearPixelBuffer();
+    
     SDL_Window* getSDLWindow();
     SDL_Renderer* getSDLRenderer();
-
 private:
     SDL_Window* sdlWindow;
     SDL_Renderer* sdlRenderer;
     SDL_Texture* texture;
-    int width, height;
+    int width;
+    int height;
+
+    std::vector<uint32_t> pixelBuffer;
 };

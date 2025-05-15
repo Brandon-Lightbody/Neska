@@ -23,9 +23,6 @@ struct PPUFlags {
 // Forward declaration of Memory.
 class MemoryBus;
 
-static const int SCREEN_WIDTH = 256;
-static const int SCREEN_HEIGHT = 240;
-
 class PPU {
 public:
     // Constructor.
@@ -51,7 +48,7 @@ public:
     void renderFrame();
 
     // Access the final 256x240 RGBA buffer.
-    const uint32_t* getFrameBuffer() const;
+    const uint8_t* getFrameBuffer() const;
 
     // For sync
     int getScanline() const { return scanline; }
@@ -101,7 +98,7 @@ private:
     uint8_t oam[256];
 
     // Final output: 256x240 ARGB.
-    uint32_t frameBuffer[SCREEN_WIDTH * SCREEN_HEIGHT];
+    uint8_t frameBuffer[SCREEN_WIDTH * SCREEN_HEIGHT];
 
     // Loopy registers and internal variables.
     uint16_t v;    // current VRAM address.

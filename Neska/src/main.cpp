@@ -12,11 +12,9 @@
 #include "renderer/cpu/cpu_renderer.h"
 
 int main() {
-    // 1) Logger
     auto logger = std::make_unique<Logger>();
     logger->toggleLogging(true, false);
 
-    // 2) Core subsystems
     auto memory = std::make_unique<MemoryBus>();
     auto ppu = std::make_unique<PPU>(MirrorMode::HORIZONTAL, *logger);
     auto cpu = std::make_unique<CPU>(*memory, *ppu);
@@ -25,37 +23,32 @@ int main() {
     memory->connectCPU(cpu.get());
     ppu->setMemory(memory.get());
 
-    // 3) Load ROM
-    MirrorMode mirror = memory->loadROM("roms/Donkey Kong.nes");
+    MirrorMode mirror = memory->loadROM("roms/PAC-MAN.nes");
     ppu->setMirrorMode(mirror);
 
-    // 4) Reset CPU/PPU and wrap them in the emulator
     cpu->reset();
     ppu->reset();
-    Emulator emu(*cpu, *ppu);
+    auto emulator = std::make_unique<Emulator>(*cpu, *ppu);
 
-    // 5) Renderer
-    constexpr int SCALE = 4;
     Renderer renderer(
-        SCREEN_WIDTH * SCALE,
-        SCREEN_HEIGHT * SCALE,
+        SCREEN_WIDTH * SCALE_FACTOR,
+        SCREEN_HEIGHT * SCALE_FACTOR,
         "Neska"
     );
 
     // 6) Debugger + GUI
-    Debugger debugger(emu, *memory);
+    Debugger debugger(*emulator, *memory);
     debugger.initGui(renderer.getSDLWindow(), renderer.getSDLRenderer());
 
     // 7) Main loop (skip the first two frames, then render normally)
-    const int FRAME_DELAY = 1000 / 60;
-    int skipFrames = 60;
+    int skipFrames = SKIP_FRAMES;
     while (renderer.pollEvents(*memory)) {
         debugger.update();
 
         if (!debugger.isPaused()) {
             // a) Run until the PPU signals end-of-frame
-            while (!emu.frameComplete()) {
-                emu.step();
+            while (!emulator->frameComplete()) {
+                emulator->step();
             }
 
             // b) If we’ve skipped fewer than two, just consume the frame
@@ -63,16 +56,13 @@ int main() {
                 --skipFrames;
             }
             else {
-                // c) Now that v and the name‐table are initialized, draw!
-                auto raw = emu.getFrameBuffer();
-                auto scaled = renderer.upscaleImage(
-                    raw, SCREEN_WIDTH, SCREEN_HEIGHT, SCALE
-                );
-                renderer.renderFrame(scaled.data());
+                auto raw = emulator->getFrameBuffer();
+                renderer.upscaleImage(raw, SCREEN_WIDTH, SCREEN_HEIGHT, SCALE_FACTOR);
+                renderer.renderFrame();
             }
 
             // d) Prepare for the next frame
-            emu.resetFrameFlag();
+            emulator->resetFrameFlag();
         }
 
         // 8) GUI + Present + Throttle
@@ -80,8 +70,11 @@ int main() {
         debugger.drawGui();
         debugger.renderGui();
 
-        renderer.present();
+        renderer.presentFrame();
+        renderer.clearPixelBuffer();
+
         logger->handleLogRequests();
+
         SDL_Delay(FRAME_DELAY);
     }
 
