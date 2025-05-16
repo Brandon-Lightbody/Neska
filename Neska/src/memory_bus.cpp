@@ -59,7 +59,7 @@ MirrorMode MemoryBus::loadROM(const std::string& path)
     else if (flags6 & 0x01)       mirrorMode = MirrorMode::VERTICAL;
     else                          mirrorMode = MirrorMode::HORIZONTAL;
 
-    const uint8_t mapperID = (flags6 >> 4) | (flags7 & 0xF0);
+    const uint8_t mapperID = ((flags7 & 0xF0) | ((flags6 & 0xF0) >> 4));
 
     if (flags6 & 0x04) rom.seekg(512, std::ios::cur);   // optional trainer
 
@@ -109,7 +109,7 @@ void MemoryBus::cpuWrite(uint16_t addr, uint8_t val) {
     }
     if (addr == 0x4014) {
         runOamDma(val);      
-        cpu->stallCycles = 513;
+        cpu->stallCycles = (cpu->getTotalCycles() & 1) ? 514 : 513;
         return;
     }
     if (addr == 0x4016) { strobeController(val); return; }
@@ -126,43 +126,53 @@ uint8_t MemoryBus::cpuPeek(uint16_t addr) const {
     return mapper->cpuRead(addr);
 }
 
-uint8_t MemoryBus::ppuRead(uint16_t addr)  const {
-    // mirror into 0x0000–0x3FFF
-    uint16_t addr_ = addr & 0x3FFF;
+uint8_t MemoryBus::ppuRead(uint16_t addr_) const {
+    // Mirror into 0x0000–0x3FFF
+    uint16_t a = addr_ & 0x3FFF;
 
-    // 1) Pattern-table: $0000–$1FFF → CHR via mapper
-    if (addr < 0x2000) {
-        return mapper->ppuRead(addr_);
+    // 1) Pattern-table ($0000–$1FFF) → CHR via mapper
+    if (a < 0x2000) {
+        return mapper->ppuRead(a);
     }
 
-    // 2) Name-tables: $2000–$2FFF mirrored through $3EFF
-    if (addr < 0x3F00) {
-        uint16_t m = mirrorAddress(addr_, mirrorMode);
+    // 2) Name-tables ($2000–$2FFF mirrored through $3EFF)
+    if (a < 0x3F00) {
+        uint16_t m = mirrorAddress(a, mirrorMode);
         return nametables[m - 0x2000];
     }
 
-    // 3) Palette: $3F00–$3F1F mirrored through $3FFF
-    uint8_t p = addr_ & 0x1F;
-    if ((p & 0x03) == 0) p &= 0x0F;       // universal‐background collapse
+    // 3) Palette ($3F00–$3F1F mirrored through $3FFF)
+    //    Only 32 bytes long; high addresses mirror every 32 bytes.
+    uint8_t p = a & 0x1F;
+
+    // Hardware mirrors $3F10/$3F14/$3F18/$3F1C back to $3F00/$3F04/$3F08/$3F0C
+    if (p >= 0x10 && (p & 0x03) == 0) {
+        p -= 0x10;
+    }
+
     return palette[p];
 }
 
-void MemoryBus::ppuWrite(uint16_t addr, uint8_t val) {
-    uint16_t addr_ = addr & 0x3FFF;
+void MemoryBus::ppuWrite(uint16_t addr_, uint8_t val) {
+    // Mirror into 0x0000–0x3FFF
+    uint16_t a = addr_ & 0x3FFF;
 
-    if (addr_ < 0x2000) {
-        // CHR-RAM or CHR-ROM write
-        mapper->ppuWrite(addr_, val);
+    if (a < 0x2000) {
+        // CHR-RAM or CHR-ROM (if mapper supports writes)
+        mapper->ppuWrite(a, val);
     }
-    else if (addr < 0x3F00) {
-        // name-table write
-        uint16_t m = mirrorAddress(addr_, mirrorMode);
+    else if (a < 0x3F00) {
+        // Name-tables
+        uint16_t m = mirrorAddress(a, mirrorMode);
         nametables[m - 0x2000] = val;
     }
     else {
-        // palette write
-        uint8_t p = addr_ & 0x1F;
-        if ((p & 0x03) == 0) p &= 0x0F;
+        // Palette writes
+        uint8_t p = a & 0x1F;
+        if (p >= 0x10 && (p & 0x03) == 0) {
+            p -= 0x10;
+        }
+        // Only bottom 6 bits are valid palette data
         palette[p] = val & 0x3F;
     }
 }

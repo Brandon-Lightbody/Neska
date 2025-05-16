@@ -11,28 +11,30 @@ Emulator::Emulator(CPU& cpu, PPU& ppu)
 }
 
 void Emulator::step() {
-    // 1) Execute exactly one CPU clock (including any DMA stalls)
     int cpuClocks = cpu.tickCycle();
 
-    // 2) For each CPU clock, run 3 PPU dots
     for (int i = 0; i < cpuClocks * 3; ++i) {
         ppu.stepDot();
 
         if (ppu.isNmiTriggered()) {
             cpu.requestNmi();
-            ppu.clearNmiFlag();      // make sure we don’t retrigger repeatedly
+            ppu.clearNmiFlag();
         }
 
-        // 3) Detect end-of-frame: PPU has wrapped back to scanline 0, cycle 0
-        if (ppu.getScanline() == 0 && ppu.getCycle() == 0) {
+        if (ppu.getScanline() == 261 && ppu.getCycle() == 1) {
             frameDone = true;
             break;
         }
     }
 }
 
-CPU* Emulator::getCPU() const { return &cpu; }
-PPU* Emulator::getPPU() const { return &ppu; }
+CPU* Emulator::getCPU() const {
+    return &cpu;
+}
+
+PPU* Emulator::getPPU() const {
+    return &ppu;
+}
 
 bool Emulator::frameComplete() const {
     return frameDone;

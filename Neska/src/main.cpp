@@ -23,62 +23,52 @@ int main() {
     memory->connectCPU(cpu.get());
     ppu->setMemory(memory.get());
 
-    MirrorMode mirror = memory->loadROM("roms/PAC-MAN.nes");
+    MirrorMode mirror = memory->loadROM("roms/Tests/Nestest.nes");
     ppu->setMirrorMode(mirror);
 
     cpu->reset();
     ppu->reset();
     auto emulator = std::make_unique<Emulator>(*cpu, *ppu);
 
-    Renderer renderer(
-        SCREEN_WIDTH * SCALE_FACTOR,
-        SCREEN_HEIGHT * SCALE_FACTOR,
-        "Neska"
-    );
+    auto renderer = std::make_unique<Renderer>
+        (SCREEN_WIDTH * SCALE_FACTOR, SCREEN_HEIGHT * SCALE_FACTOR, "Neska");
 
-    // 6) Debugger + GUI
-    Debugger debugger(*emulator, *memory);
-    debugger.initGui(renderer.getSDLWindow(), renderer.getSDLRenderer());
+    auto debugger = std::make_unique<Debugger>(*emulator, *memory);
+    debugger->initGui(renderer->getSDLWindow(), renderer->getSDLRenderer());
 
-    // 7) Main loop (skip the first two frames, then render normally)
     int skipFrames = SKIP_FRAMES;
-    while (renderer.pollEvents(*memory)) {
-        debugger.update();
+    while (renderer->pollEvents(*memory)) {
+        debugger->update();
 
-        if (!debugger.isPaused()) {
-            // a) Run until the PPU signals end-of-frame
+        if (!debugger->isPaused()) {
             while (!emulator->frameComplete()) {
                 emulator->step();
             }
 
-            // b) If we’ve skipped fewer than two, just consume the frame
             if (skipFrames > 0) {
                 --skipFrames;
             }
             else {
                 auto raw = emulator->getFrameBuffer();
-                renderer.upscaleImage(raw, SCREEN_WIDTH, SCREEN_HEIGHT, SCALE_FACTOR);
-                renderer.renderFrame();
+                renderer->upscaleImage(raw, SCREEN_WIDTH, SCREEN_HEIGHT, SCALE_FACTOR);
+                renderer->renderFrame();
             }
 
-            // d) Prepare for the next frame
             emulator->resetFrameFlag();
         }
 
-        // 8) GUI + Present + Throttle
-        debugger.newFrameGui();
-        debugger.drawGui();
-        debugger.renderGui();
+        debugger->newFrameGui();
+        debugger->drawGui();
+        debugger->renderGui();
 
-        renderer.presentFrame();
-        renderer.clearPixelBuffer();
+        renderer->presentFrame();
+        renderer->clearPixelBuffer();
 
         logger->handleLogRequests();
 
         SDL_Delay(FRAME_DELAY);
     }
 
-    // 9) Cleanup
-    debugger.shutdownGui();
+    debugger->shutdownGui();
     return 0;
 }

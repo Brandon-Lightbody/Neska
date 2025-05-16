@@ -350,7 +350,7 @@ void PPU::renderFrame() {
 // ----------------
 
 const uint8_t* PPU::getFrameBuffer() const {
-    return frameBuffer;
+    return frameBuffer.data();
 }
 
 bool PPU::isNmiTriggered() const {
@@ -636,10 +636,14 @@ void PPU::incrementY() {
 }
 
 void PPU::copyX() {
-    v = (v & 0x7BE0) | (t & 0x041F);
+    // clear just bits 0–4 and bit 10 in v, then OR in t’s bits there
+    v = (v & ~0x041F)    // keep all other bits
+        | (t & 0x041F);   // copy coarse X + nametable
 }
 void PPU::copyY() {
-    v = (v & 0x041F) | (t & 0x7BE0);
+    // clear fine Y, coarse Y, and nametable‐Y (bits 5–9+11), then OR from t
+    v = (v & ~0x7BE0)
+        | (t & 0x7BE0);
 }
 
 void PPU::updateBackgroundShifters() {

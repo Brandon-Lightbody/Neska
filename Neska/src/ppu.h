@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <vector>
+#include <array>
 #include <cstring>
 #include <iostream>
 #include "debugging/logger.h"
@@ -97,7 +98,7 @@ private:
     // OAM memory (sprite RAM), 256 bytes.
     uint8_t oam[256];
 
-    uint8_t frameBuffer[SCREEN_WIDTH * SCREEN_HEIGHT];
+    std::array<uint8_t, TOTAL_PIXELS_UNSCALED> frameBuffer;
 
     // Loopy registers and internal variables.
     uint16_t v;    // current VRAM address.
