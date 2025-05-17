@@ -6,9 +6,6 @@ Debugger::Debugger(Emulator& emu, MemoryBus& mem)
     ppu(*emu.getPPU()), paused(false), stepRequested(false)
 {
     gui = std::make_unique<DebugGUI>(*this);
-
-    // Start in paused mode for now.
-    paused = true;
 }
 
 Debugger::~Debugger() = default;
