@@ -19,26 +19,10 @@
 #include <string_view>
 
 int main() {
-    quill::Backend::start();
-
-    quill::Logger* loggerr = quill::Frontend::create_or_get_logger(
-
-        "root", quill::Frontend::create_or_get_sink<quill::ConsoleSink>("sink_id_1"),
-
-        quill::PatternFormatterOptions{ "%(time) [%(thread_id)] %(short_source_location:<28) "
-
-                                       "LOG_%(log_level:<9) %(logger:<12) %(message)",
-
-                                       "%H:%M:%S.%Qns", quill::Timezone::GmtTime });
-
-    LOG_INFO(loggerr, "Hello from {}!", 123);
-
     auto logger = std::make_unique<Logger>();
-    logger->toggleLogging(true, false);
-
-    auto memory = std::make_unique<MemoryBus>();
-    auto ppu = std::make_unique<PPU>(MirrorMode::HORIZONTAL, *logger);
-    auto cpu = std::make_unique<CPU>(*memory, *ppu);
+    auto memory = std::make_unique<MemoryBus>(logger.get());
+    auto ppu = std::make_unique<PPU>(MirrorMode::HORIZONTAL, logger.get());
+    auto cpu = std::make_unique<CPU>(memory.get(), ppu.get(), logger.get());
 
     memory->connectPPU(ppu.get());
     memory->connectCPU(cpu.get());
@@ -84,8 +68,6 @@ int main() {
 
         renderer->presentFrame();
         renderer->clearPixelBuffer();
-
-        logger->handleLogRequests();
 
         SDL_Delay(FRAME_DELAY);
     }

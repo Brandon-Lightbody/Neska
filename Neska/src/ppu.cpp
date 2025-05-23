@@ -6,8 +6,6 @@
 #include <string>
 #include <sstream>
 
-#include "debugging/logger.h"
-
 // ----------------
 // PPUFlags
 // ----------------
@@ -47,8 +45,8 @@ void PPUFlags::clear(PPUStatusFlag flag) {
     }
 }
 
-PPU::PPU(MirrorMode mode, Logger& logger)
-    : mirrorMode(mode), memory(nullptr),
+PPU::PPU(MirrorMode mode, Logger* logger)
+    : mirrorMode(mode), logger(logger), memory(nullptr),
     cycle(0), scanline(0), v(0), t(0), fineX(0), w(false),
     readBuffer(0), nmiTriggered(false), oddFrame(false),
     evaluatedSpriteCount(0), attribShiftLo(0), attribShiftHi(0),
@@ -66,8 +64,6 @@ PPU::PPU(MirrorMode mode, Logger& logger)
     std::memset(spriteShiftHi, 0, sizeof(spriteShiftHi));
     std::memset(spriteXCounter, 0, sizeof(spriteXCounter));
     std::memset(spriteAttrs, 0, sizeof(spriteAttrs));
-
-    this->logger = &logger;
 }
 
 void PPU::reset() {

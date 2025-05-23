@@ -6,13 +6,14 @@
 #include <string>
 #include "core.h"
 #include "mapper.h"
+#include "debugging/logger.h"
 
 class CPU;
 class PPU;
 
 class MemoryBus {
 public:
-    MemoryBus();
+    MemoryBus(Logger* logger);
 
     void connectCPU(CPU* cpu);
     void connectPPU(PPU* ppu);
@@ -43,6 +44,7 @@ private:
 
     PPU* ppu;
     CPU* cpu;
+    Logger* logger;
 
     std::unique_ptr<Mapper> mapper;
 
