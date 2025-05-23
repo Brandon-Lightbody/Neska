@@ -13,8 +13,8 @@ Instruction instructionTable[256];
 struct TableInitializer { TableInitializer() { CPU::initInstructionTable(); } } tableInitializer;
 
 // Constructor
-CPU::CPU(MemoryBus* mem, PPU* ppu, Logger* logger)
-    : memory(mem), ppu(ppu), logger(logger), PC(0), A(0), X(0), Y(0), SP(0xFD),
+CPU::CPU(MemoryBus* mem, PPU* ppu)
+    : memory(mem), ppu(ppu), PC(0), A(0), X(0), Y(0), SP(0xFD),
     status(FLAG_UNUSED), cyclesRemaining(0), opcode(0), addr(0), fetched(0),
     stallCycles(0), nmiRequested(false), totalCycles(0)
 {
@@ -112,8 +112,6 @@ int CPU::tickCycle() {
     // Consume a CPU cycle
     --cyclesRemaining;
     ++totalCycles;
-
-    LOG_INFO(logger->getPtr(), "dee {}", 123);
 
     return 1; // Always return at least 1 cycle consumed per tick
 }

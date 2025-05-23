@@ -38,7 +38,7 @@ extern Instruction instructionTable[256];
 
 class CPU {
 public:
-    CPU(MemoryBus* mem, PPU* ppu, Logger* logger);
+    CPU(MemoryBus* mem, PPU* ppu);
 
     static void initInstructionTable();
 
@@ -65,8 +65,6 @@ public:
 
     bool nmiRequested = false;
 private:
-    Logger* logger;
-
     int totalCycles;
 
     MemoryBus* memory;

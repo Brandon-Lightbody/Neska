@@ -27,3 +27,5 @@ add_custom_command(
         "${CMAKE_SOURCE_DIR}/roms"
         "$<TARGET_FILE_DIR:Neska>/roms"
 )
+
+add_compile_options("$<$<CXX_COMPILER_ID:MSVC>:/utf-8>")

@@ -9,8 +9,8 @@
 
 uint16_t mirrorAddress(uint16_t addr, MirrorMode mirrorMode);
 
-MemoryBus::MemoryBus(Logger* logger)
-    : logger(logger), strobe(false), controllerState(0), controllerShift(0),
+MemoryBus::MemoryBus()
+    : strobe(false), controllerState(0), controllerShift(0),
     ppu(nullptr), cpu(nullptr), mapper(nullptr)
 {
     mirrorMode = MirrorMode::HORIZONTAL;

@@ -1,28 +1,25 @@
 ﻿#include "logger.h"
 
-#include <iostream>
+std::shared_ptr<spdlog::logger> Logger::instance = nullptr;
 
-Logger::Logger() {
-    if (!quill::Backend::is_running()) {
-        quill::Backend::start();
-    }
+void Logger::init(spdlog::level::level_enum level) {
+    if (!instance) {
+        // Create a colored console sink
+        auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
 
-    pLogger = quill::Frontend::create_or_get_logger(
-        "root",
-        quill::Frontend::create_or_get_sink<quill::ConsoleSink>("sink_id_1"),
-        quill::PatternFormatterOptions{
-        "%(time) [%(thread_id)] %(short_source_location:<28) "
-        "LOG_%(log_level:<9) %(logger:<12) %(message)",
-        "%H:%M:%S.%Qns",
-        quill::Timezone::GmtTime });
-}
+        // Or create a file sink instead:
+        // auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>("log.txt", true);
 
-Logger::~Logger() {
-    if (quill::Backend::is_running()) {
-        quill::Backend::stop();
+        instance = std::make_shared<spdlog::logger>("neska", console_sink);
+        spdlog::register_logger(instance);
+        instance->set_level(level);
+        instance->set_pattern("[%H:%M:%S] [%^%l%$] %v");
     }
 }
 
-quill::Logger* Logger::getPtr() {
-    return pLogger;
+std::shared_ptr<spdlog::logger>& Logger::get() {
+    if (!instance) {
+        init();  // default to debug level and console sink
+    }
+    return instance;
 }

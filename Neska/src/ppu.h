@@ -27,7 +27,7 @@ class MemoryBus;
 class PPU {
 public:
     // Constructor.
-    explicit PPU(MirrorMode mode, Logger* logger);
+    explicit PPU(MirrorMode mode);
 
     void reset();
 
@@ -75,8 +75,6 @@ public:
     bool nmiOutputEnabled() const;
     void clearVBlank();
 private:
-    Logger* logger;
-
     // Background pipeline functions.
     void fetchBackgroundData();
     void incrementX();

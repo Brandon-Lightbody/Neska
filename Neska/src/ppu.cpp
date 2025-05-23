@@ -45,8 +45,8 @@ void PPUFlags::clear(PPUStatusFlag flag) {
     }
 }
 
-PPU::PPU(MirrorMode mode, Logger* logger)
-    : mirrorMode(mode), logger(logger), memory(nullptr),
+PPU::PPU(MirrorMode mode)
+    : mirrorMode(mode), memory(nullptr),
     cycle(0), scanline(0), v(0), t(0), fineX(0), w(false),
     readBuffer(0), nmiTriggered(false), oddFrame(false),
     evaluatedSpriteCount(0), attribShiftLo(0), attribShiftHi(0),

@@ -11,18 +11,10 @@
 #include "emulator.h"
 #include "renderer/cpu/cpu_renderer.h"
 
-#include "quill/Backend.h"
-#include "quill/Frontend.h"
-#include "quill/LogMacros.h"
-#include "quill/Logger.h"
-#include "quill/sinks/ConsoleSink.h"
-#include <string_view>
-
 int main() {
-    auto logger = std::make_unique<Logger>();
-    auto memory = std::make_unique<MemoryBus>(logger.get());
-    auto ppu = std::make_unique<PPU>(MirrorMode::HORIZONTAL, logger.get());
-    auto cpu = std::make_unique<CPU>(memory.get(), ppu.get(), logger.get());
+    auto memory = std::make_unique<MemoryBus>();
+    auto ppu = std::make_unique<PPU>(MirrorMode::HORIZONTAL);
+    auto cpu = std::make_unique<CPU>(memory.get(), ppu.get());
 
     memory->connectPPU(ppu.get());
     memory->connectCPU(cpu.get());

@@ -13,7 +13,7 @@ class PPU;
 
 class MemoryBus {
 public:
-    MemoryBus(Logger* logger);
+    MemoryBus();
 
     void connectCPU(CPU* cpu);
     void connectPPU(PPU* ppu);
@@ -44,7 +44,6 @@ private:
 
     PPU* ppu;
     CPU* cpu;
-    Logger* logger;
 
     std::unique_ptr<Mapper> mapper;
 
