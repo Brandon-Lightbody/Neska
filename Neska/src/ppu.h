@@ -27,7 +27,7 @@ class MemoryBus;
 class PPU {
 public:
     // Constructor.
-    explicit PPU(MirrorMode mode);
+    PPU(MirrorMode mode);
 
     void reset();
 

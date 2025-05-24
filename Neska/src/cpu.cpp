@@ -22,6 +22,7 @@ CPU::CPU(MemoryBus* mem, PPU* ppu)
 
 void CPU::requestNmi() {
     nmiRequested = true;
+    logInfo("[CPU] requestNmi() called.");
 }
 
 // Reset CPU and set PC from reset vector
@@ -50,6 +51,8 @@ void CPU::nmi() {
     cyclesRemaining += 7;
 
     setFlag(FLAG_INTERRUPT, true);
+
+    logInfo("[PPU] NMI occurred.");
 }
 
 void CPU::irq() {
@@ -112,7 +115,7 @@ int CPU::tickCycle() {
     // Consume a CPU cycle
     --cyclesRemaining;
     ++totalCycles;
-
+    
     return 1; // Always return at least 1 cycle consumed per tick
 }
 

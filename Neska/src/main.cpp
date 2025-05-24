@@ -12,6 +12,9 @@
 #include "renderer/cpu/cpu_renderer.h"
 
 int main() {
+    initLogger();
+    enableDebugLogging();
+
     auto memory = std::make_unique<MemoryBus>();
     auto ppu = std::make_unique<PPU>(MirrorMode::HORIZONTAL);
     auto cpu = std::make_unique<CPU>(memory.get(), ppu.get());
@@ -64,6 +67,8 @@ int main() {
         SDL_Delay(FRAME_DELAY);
     }
 
+    disableDebugLogging();
+    shutdownLogger();
     debugger->shutdownGui();
     return 0;
 }

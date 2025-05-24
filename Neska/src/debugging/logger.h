@@ -1,25 +1,24 @@
 #pragma once
 
-#include <memory>
-#include <string>
-#include <spdlog/spdlog.h>
-#include <spdlog/sinks/stdout_color_sinks.h>  // Colored console output
-//#include <spdlog/sinks/basic_file_sink.h>   // Uncomment for file logging
+#include <quill/Logger.h>
+#include <quill/Frontend.h>
+#include <quill/Backend.h>
+#include <quill/sinks/ConsoleSink.h>
+#include <quill/backend/PatternFormatter.h>
+#include <quill/LogMacros.h>
+#include <string_view>
 
-class Logger {
-public:
-    // Access the global logger instance
-    static std::shared_ptr<spdlog::logger>& get();
+void initLogger();
+void shutdownLogger();
 
-    // Optional: Initialize with a specific log level or sink
-    static void init(spdlog::level::level_enum level = spdlog::level::debug);
+void logInfo(std::string_view msg);
+void logWarn(std::string_view msg);
+void logError(std::string_view msg);
+void logDebug(std::string_view msg);
 
-private:
-    Logger() = default;
-    ~Logger() = default;
+bool debugLoggingEnabled();
 
-    Logger(const Logger&) = delete;
-    Logger& operator=(const Logger&) = delete;
+void enableDebugLogging();
+void disableDebugLogging();
 
-    static std::shared_ptr<spdlog::logger> instance;
-};
+quill::Logger* getQuillLogger();

@@ -249,6 +249,8 @@ void PPU::stepDot()
         w = false;                                // PPUSCROLL/PPUADDR latch
         patternShiftLo = patternShiftHi = 0;
         attribShiftLo = attribShiftHi = 0;
+
+        logInfo("[PPU] Frame start.");
     }
 
     // ──────────────────────────────────────────────────────────────────────
@@ -307,6 +309,8 @@ void PPU::stepDot()
             flags.set(PPUStatusFlag::NMI);
             nmiTriggered = true;
         }
+
+        logInfo("[PPU] Frame complete.");
     }
 
     // ──────────────────────────────────────────────────────────────────────
@@ -669,7 +673,9 @@ bool PPU::isVBlank() const {
 }
 
 bool PPU::nmiOutputEnabled() const {
-    return (registers[0] & 0x80) != 0;
+    bool ret = (registers[0] & 0x80) != 0;
+    logInfo("[PPU] nmiOutputEnabled() returned.");
+    return ret;
 }
 
 void PPU::clearVBlank() {
